@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>不動産資産性評価・投資採算＆CFシミュレーター</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --primary: #1e3a8a;
+      --secondary: #0284c7;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --accent-red: #ef4444;
+      --accent-green: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px; }
+    .header { background: var(--primary); color: white; padding: 18px 24px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .header h1 { font-size: 1.25rem; }
+    .badge-group span { background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; margin-left: 6px; }
+    
+    .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 950px) { .grid-layout { grid-template-columns: 1fr; } }
+    
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    .card h2 { font-size: 1.05rem; margin-bottom: 16px; border-bottom: 2px solid var(--border); padding-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    
+    /* 4カラム構成のKPIレイアウト */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 600px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+    .kpi-box { background: #f1f5f9; padding: 12px 8px; border-radius: 6px; text-align: center; }
+    .kpi-box .label { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px; }
+    .kpi-box .value { font-size: 1.15rem; font-weight: bold; color: var(--primary); white-space: nowrap; }
+
+    .control-group { margin-bottom: 16px; }
+    .control-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.88rem; }
+    .control-val { font-weight: bold; color: var(--primary); }
+    input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+    .range-limits { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+
+    .sub-section-title { font-size: 0.9rem; font-weight: 700; color: var(--secondary); margin: 16px 0 10px; padding-left: 6px; border-left: 3px solid var(--secondary); }
+    .inline-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+    .input-field label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px; }
+    .input-field input, .input-field select { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; }
+
+    .table-container { overflow-x: auto; }
+    .breakdown-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.82rem; }
+    .breakdown-table th, .breakdown-table td { border: 1px solid var(--border); padding: 8px 10px; text-align: right; white-space: nowrap; }
+    .breakdown-table th:first-child, .breakdown-table td:first-child { text-align: left; }
+    .breakdown-table th { background: #f8fafc; font-weight: 600; vertical-align: middle; }
+    .breakdown-table tr.total-row { background: #f1f5f9; font-weight: bold; }
+    .breakdown-table tr.annual-total-row { background: #f8fafc; font-weight: bold; border-top: 2px solid var(--border); }
+
+    /* ①②③バッジスタイル */
+    .loan-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      font-size: 0.75rem;
+      background: #e0f2fe;
+      color: #0284c7;
+      border: 1px solid #bae6fd;
+      border-radius: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>不動産投資採算・融資協調CFシミュレーター</h1>
+    <div class="badge-group">
+      <span>民間融資＋公庫協調モデル</span>
+      <span>元利均等リアルタイム試算</span>
+    </div>
+  </div>
+
+  <div class="grid-layout">
+    <!-- 左カラム：各種パラメータ設定 -->
+    <div>
+      <div class="card">
+        <h2>⚙️ 物件・事業費設定</h2>
+        
+        <div class="control-group">
+          <div class="control-header">
+            <span>落札取得価格</span>
+            <span class="control-val" id="disp-price">2,000 万円</span>
+          </div>
+          <input type="range" id="param-price" min="1200" max="2500" step="50" value="2000">
+          <div class="range-limits"><span>1,200万</span><span>2,500万</span></div>
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <span>リノベーション費用</span>
+            <span class="control-val" id="disp-reno">900 万円</span>
+          </div>
+          <input type="range" id="param-reno" min="200" max="1200" step="50" value="900">
+          <div class="range-limits"><span>200万</span><span>1,200万</span></div>
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <span>取得諸経費・予備費</span>
+            <span class="control-val" id="disp-misc">100 万円</span>
+          </div>
+          <input type="range" id="param-misc" min="0" max="200" step="10" value="100">
+          <div class="range-limits"><span>0万</span><span>200万</span></div>
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <span>想定月額賃料</span>
+            <span class="control-val" id="disp-rent">16.5 万円</span>
+          </div>
+          <input type="range" id="param-rent" min="12.0" max="30.0" step="0.5" value="16.5">
+          <div class="range-limits"><span>12.0万</span><span>30.0万</span></div>
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <span>運営経費率（管理費・固都税・修繕積立等）</span>
+            <span class="control-val" id="disp-opex">16 %</span>
+          </div>
+          <input type="range" id="param-opex" min="5" max="30" step="1" value="16">
+          <div class="range-limits"><span>5%</span><span>戸建標準: 12%〜18%</span><span>30%</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>🏦 借入・融資条件設定</h2>
+        
+        <!-- 民間金融機関 -->
+        <div class="sub-section-title">① 民間金融機関（信金・地銀）</div>
+        <div class="inline-inputs">
+          <div class="input-field">
+            <label>借入額 (万円)</label>
+            <input type="number" id="loan-bank-amount" value="1650" step="50">
+          </div>
+          <div class="input-field">
+            <label>金利 (%)</label>
+            <input type="number" id="loan-bank-rate" value="2.2" step="0.1">
+          </div>
+          <div class="input-field">
+            <label>返済期間 (年)</label>
+            <input type="number" id="loan-bank-years" value="25" step="1" min="1">
+          </div>
+        </div>
+
+        <!-- 日本政策金融公庫（設備） -->
+        <div class="sub-section-title">② 日本政策金融公庫（設備資金・リノベ）</div>
+        <div class="inline-inputs">
+          <div class="input-field">
+            <label>借入額 (万円)</label>
+            <input type="number" id="loan-koko-eq-amount" value="900" step="50">
+          </div>
+          <div class="input-field">
+            <label>金利 (%)</label>
+            <input type="number" id="loan-koko-eq-rate" value="2.0" step="0.1">
+          </div>
+          <div class="input-field">
+            <label>返済期間 (年)</label>
+            <input type="number" id="loan-koko-eq-years" value="15" step="1" min="1">
+          </div>
+        </div>
+
+        <!-- 日本政策金融公庫（運転） -->
+        <div class="sub-section-title">③ 日本政策金融公庫（初期運転資金）</div>
+        <div class="inline-inputs">
+          <div class="input-field">
+            <label>借入額 (万円)</label>
+            <input type="number" id="loan-koko-op-amount" value="100" step="10">
+          </div>
+          <div class="input-field">
+            <label>金利 (%)</label>
+            <input type="number" id="loan-koko-op-rate" value="2.2" step="0.1">
+          </div>
+          <div class="input-field">
+            <label>返済期間 (年)</label>
+            <input type="number" id="loan-koko-op-years" value="7" step="1" min="1">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右カラム：KPI・収支結果・グラフ -->
+    <div>
+      <div class="card">
+        <h2>📊 リアルタイム採算＆CFサマリー</h2>
+        
+        <div class="kpi-row">
+          <div class="kpi-box">
+            <div class="label">総事業費</div>
+            <div class="value" id="kpi-total">3,000 万円</div>
+          </div>
+          <div class="kpi-box">
+            <div class="label">表面利回り</div>
+            <div class="value" id="kpi-gross-yield">6.60 %</div>
+          </div>
+          <div class="kpi-box">
+            <div class="label">実質利回り</div>
+            <div class="value" id="kpi-net-yield">5.54 %</div>
+          </div>
+          <div class="kpi-box">
+            <div class="label">月額総返済額</div>
+            <div class="value" id="kpi-repay">14.2 万円</div>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="breakdown-table" id="cf-table">
+            <thead>
+              <tr id="table-head-row">
+                <!-- 動的生成 -->
+              </tr>
+            </thead>
+            <tbody id="table-body">
+              <!-- 動的生成 -->
+            </tbody>
+          </table>
+        </div>
+
+        <div style="height: 220px; margin-top: 20px;">
+          <canvas id="cfChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ヘルパー：元利均等返済の月額計算
+    function calcPmt(principalYen, annualRatePercent, years) {
+      if (principalYen <= 0 || years <= 0) return 0;
+      const r = (annualRatePercent / 100) / 12;
+      const n = years * 12;
+      if (r === 0) return principalYen / n;
+      return principalYen * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    }
+
+    const dom = {
+      price: document.getElementById('param-price'),
+      reno: document.getElementById('param-reno'),
+      misc: document.getElementById('param-misc'),
+      rent: document.getElementById('param-rent'),
+      opex: document.getElementById('param-opex'),
+
+      dispPrice: document.getElementById('disp-price'),
+      dispReno: document.getElementById('disp-reno'),
+      dispMisc: document.getElementById('disp-misc'),
+      dispRent: document.getElementById('disp-rent'),
+      dispOpex: document.getElementById('disp-opex'),
+
+      bankAmt: document.getElementById('loan-bank-amount'),
+      bankRate: document.getElementById('loan-bank-rate'),
+      bankYrs: document.getElementById('loan-bank-years'),
+
+      kokoEqAmt: document.getElementById('loan-koko-eq-amount'),
+      kokoEqRate: document.getElementById('loan-koko-eq-rate'),
+      kokoEqYrs: document.getElementById('loan-koko-eq-years'),
+
+      kokoOpAmt: document.getElementById('loan-koko-op-amount'),
+      kokoOpRate: document.getElementById('loan-koko-op-rate'),
+      kokoOpYrs: document.getElementById('loan-koko-op-years'),
+
+      kpiTotal: document.getElementById('kpi-total'),
+      kpiYield: document.getElementById('kpi-gross-yield'),
+      kpiNetYield: document.getElementById('kpi-net-yield'),
+      kpiRepay: document.getElementById('kpi-repay'),
+
+      tableHeadRow: document.getElementById('table-head-row'),
+      tableBody: document.getElementById('table-body')
+    };
+
+    const ctx = document.getElementById('cfChart').getContext('2d');
+    const cfChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [
+          { label: '月額返済総額', data: [], backgroundColor: '#f87171' },
+          { label: '月額CF', data: [], backgroundColor: '#38bdf8' }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { title: { display: true, text: '月額 (円)' } }
+        }
+      }
+    });
+
+    function calculate() {
+      const price = parseFloat(dom.price.value) || 0;
+      const reno  = parseFloat(dom.reno.value) || 0;
+      const misc  = parseFloat(dom.misc.value) || 0;
+      const rentMan = parseFloat(dom.rent.value) || 0;
+      const opexRate = (parseFloat(dom.opex.value) || 0) / 100;
+
+      // 表示更新
+      dom.dispPrice.textContent = price.toLocaleString() + ' 万円';
+      dom.dispReno.textContent  = reno.toLocaleString() + ' 万円';
+      dom.dispMisc.textContent  = misc.toLocaleString() + ' 万円';
+      dom.dispRent.textContent  = rentMan.toFixed(1) + ' 万円';
+      dom.dispOpex.textContent  = Math.round(opexRate * 100) + ' %';
+
+      const totalProject = price + reno + misc;
+      const rentYen = rentMan * 10000;
+      const opexYen = rentYen * opexRate;
+      const noiYen  = rentYen - opexYen;
+
+      // 融資条件の取得
+      const bankYrs = Math.max(1, parseFloat(dom.bankYrs.value) || 0);
+      const eqYrs   = Math.max(1, parseFloat(dom.kokoEqYrs.value) || 0);
+      const opYrs   = Math.max(1, parseFloat(dom.kokoOpYrs.value) || 0);
+
+      const bankAmt = parseFloat(dom.bankAmt.value) || 0;
+      const eqAmt   = parseFloat(dom.kokoEqAmt.value) || 0;
+      const opAmt   = parseFloat(dom.kokoOpAmt.value) || 0;
+
+      const pmtBank = calcPmt(bankAmt * 10000, parseFloat(dom.bankRate.value) || 0, bankYrs);
+      const pmtEq   = calcPmt(eqAmt * 10000, parseFloat(dom.kokoEqRate.value) || 0, eqYrs);
+      const pmtOp   = calcPmt(opAmt * 10000, parseFloat(dom.kokoOpRate.value) || 0, opYrs);
+
+      // 返済期間のブレークポイントを昇順でユニーク化して抽出
+      const breakpoints = Array.from(new Set([opYrs, eqYrs, bankYrs])).sort((a, b) => a - b);
+
+      // 各期間（ステージ）の情報を構築
+      const stages = [];
+      let prevYr = 0;
+      breakpoints.forEach((yr) => {
+        const midYr = (prevYr + yr) / 2;
+
+        const hasBank = midYr <= bankYrs;
+        const hasEq   = midYr <= eqYrs;
+        const hasOp   = midYr <= opYrs;
+
+        const periodLabel = prevYr === 0 ? `当初${yr}年間` : `${prevYr + 1}〜${yr}年目`;
+
+        // ①②③ バッジ表示
+        const activeBadges = [];
+        if (hasBank) activeBadges.push('①');
+        if (hasEq)   activeBadges.push('②');
+        if (hasOp)   activeBadges.push('③');
+        
+        const badgeHtml = activeBadges.length > 0 
+          ? `<span class="loan-badge">${activeBadges.join('')}</span>` 
+          : '';
+
+        const stageRepayBank = hasBank ? pmtBank : 0;
+        const stageRepayEq   = hasEq ? pmtEq : 0;
+        const stageRepayOp   = hasOp ? pmtOp : 0;
+        const totalRepay     = stageRepayBank + stageRepayEq + stageRepayOp;
+        const cf             = noiYen - totalRepay;
+
+        stages.push({
+          label: `${periodLabel}${badgeHtml}`,
+          chartLabel: `${periodLabel} (${activeBadges.join('')})`,
+          repayBank: stageRepayBank,
+          repayEq: stageRepayEq,
+          repayOp: stageRepayOp,
+          totalRepay: totalRepay,
+          cf: cf
+        });
+
+        prevYr = yr;
+      });
+
+      // KPI更新
+      dom.kpiTotal.textContent = Math.round(totalProject).toLocaleString() + ' 万円';
+      
+      const grossYield = totalProject > 0 ? ((rentMan * 12) / totalProject) * 100 : 0;
+      dom.kpiYield.textContent = grossYield.toFixed(2) + ' %';
+      
+      // 実質利回り（NOI利回り）
+      const netYield = totalProject > 0 ? (((noiYen * 12) / 10000) / totalProject) * 100 : 0;
+      dom.kpiNetYield.textContent = netYield.toFixed(2) + ' %';
+
+      const initialRepay = stages.length > 0 ? stages[0].totalRepay : 0;
+      dom.kpiRepay.textContent = (initialRepay / 10000).toFixed(1) + ' 万円';
+
+      // テーブルの動的生成
+      const fmtYen = (val) => Math.round(val).toLocaleString() + ' 円';
+      const fmtMinus = (val) => val > 0 ? '▲' + Math.round(val).toLocaleString() + ' 円' : '0 円';
+      const formatYenWithSign = (val) => (val >= 0 ? '+' : '') + Math.round(val).toLocaleString() + ' 円';
+
+      // 1. ヘッダー生成
+      let theadHtml = '<th>収支内訳項目</th>';
+      stages.forEach(s => {
+        theadHtml += `<th>${s.label}</th>`;
+      });
+      dom.tableHeadRow.innerHTML = theadHtml;
+
+      // 2. 各行の生成（パターン1：①民間融資 で統一）
+      let rentRow  = `<tr><td>想定月額賃料</td>${stages.map(() => `<td>${fmtYen(rentYen)}</td>`).join('')}</tr>`;
+      let opexRow  = `<tr><td>運営管理経費</td>${stages.map(() => `<td>${fmtMinus(opexYen)}</td>`).join('')}</tr>`;
+      let bankRow  = `<tr><td>① 民間融資</td>${stages.map(s => `<td>${fmtMinus(s.repayBank)}</td>`).join('')}</tr>`;
+      let eqRow    = `<tr><td>② 公庫（設備${eqAmt}万）</td>${stages.map(s => `<td>${fmtMinus(s.repayEq)}</td>`).join('')}</tr>`;
+      let opRow    = `<tr><td>③ 公庫（運転${opAmt}万）</td>${stages.map(s => `<td>${fmtMinus(s.repayOp)}</td>`).join('')}</tr>`;
+      
+      // 税引前月額CF
+      let cfRow = `<tr class="total-row"><td>税引前月額CF</td>` +
+        stages.map(s => {
+          const color = s.cf >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+          return `<td style="color: ${color}">${formatYenWithSign(s.cf)}</td>`;
+        }).join('') + `</tr>`;
+
+      // 税引前年間CF
+      let annualCfRow = `<tr class="annual-total-row"><td>税引前年間CF</td>` +
+        stages.map(s => {
+          const annualCf = s.cf * 12;
+          const color = annualCf >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+          return `<td style="color: ${color}">${formatYenWithSign(annualCf)}</td>`;
+        }).join('') + `</tr>`;
+
+      dom.tableBody.innerHTML = rentRow + opexRow + bankRow + eqRow + opRow + cfRow + annualCfRow;
+
+      // グラフ更新
+      cfChart.data.labels = stages.map(s => s.chartLabel);
+      cfChart.data.datasets[0].data = stages.map(s => Math.round(s.totalRepay));
+      cfChart.data.datasets[1].data = stages.map(s => Math.round(s.cf));
+      cfChart.update('none');
+    }
+
+    // イベントリスナー設定
+    const allInputs = [
+      dom.price, dom.reno, dom.misc, dom.rent, dom.opex,
+      dom.bankAmt, dom.bankRate, dom.bankYrs,
+      dom.kokoEqAmt, dom.kokoEqRate, dom.kokoEqYrs,
+      dom.kokoOpAmt, dom.kokoOpRate, dom.kokoOpYrs
+    ];
+    allInputs.forEach(el => el.addEventListener('input', calculate));
+
+    calculate();
+  </script>
+</body>
+</html>
