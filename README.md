@@ -1,2 +1,2 @@
 # real-estate-simulator
-不動産購入利回りシュミレータ
+不動産利回りシュミレータ
