@@ -5,6 +5,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>不動産投資採算・収支CFシミュレーター</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- ========================================== -->
+  <!-- ⚙️ 設定パラメータ（ここを変更すれば全体に自動反映されます） -->
+  <!-- ========================================== -->
+  <script>
+    const DEFAULT_CONFIG = {
+      // 1. 物件・事業費
+      price: {
+        val: 2400,      // 落札取得価格 初期値 (万円)
+        min: 1500,      // 下限 (万円)
+        max: 3000,      // 上限 (万円) 
+        step: 10
+      },
+      reno: {
+        val: 1000,      // リノベーション費用 初期値 (万円)
+        min: 300,       // 下限 (万円)
+        max: 1500,      // 上限 (万円)
+        step: 10
+      },
+      equityDown: {
+        val: 400,       // 物件頭金 (万円)
+        min: 0,
+        max: 1000,
+        step: 10
+      },
+      equityMisc: {
+        val: 100,       // 諸経費 (万円)
+        min: 0,
+        max: 300,
+        step: 10
+      },
+      rent: {
+        val: 17.0,      // 想定月額賃料 (万円)
+        min: 14.0,
+        max: 25.0,
+        step: 0.5
+      },
+      opex: {
+        val: 22,        // 運営経費率 (%)
+        min: 10,
+        max: 30,
+        step: 1
+      },
+
+      // 2. 融資条件
+      bank: {
+        amount: 3000,   // ① 民間金融機関 借入額 (万円) 
+        rate: 4.0,      // 金利 (%)
+        years: 25       // 期間 (年)
+      },
+      kokoEq: {
+        enabled: false, // ② 公庫（設備資金）の初期有効/無効
+        amount: 1000,   // 借入額 (万円)
+        rate: 2.2,      // 金利 (%)
+        years: 15       // 期間 (年)
+      }
+    };
+  </script>
+
   <style>
     :root {
       --primary: #1e3a8a;
@@ -198,47 +257,47 @@
         <div class="control-group">
           <div class="control-header">
             <span>落札取得価格</span>
-            <span class="control-val" id="disp-price">2,300 万円</span>
+            <span class="control-val" id="disp-price"></span>
           </div>
-          <input type="range" id="param-price" min="1500" max="2500" step="10" value="2300">
-          <div class="range-limits"><span>1,500万</span><span>2,500万</span></div>
+          <input type="range" id="param-price">
+          <div class="range-limits"><span id="limit-price-min"></span><span id="limit-price-max"></span></div>
         </div>
 
         <!-- リノベーション費用 -->
         <div class="control-group">
           <div class="control-header">
             <span>リノベーション費用</span>
-            <span class="control-val" id="disp-reno">900 万円</span>
+            <span class="control-val" id="disp-reno"></span>
           </div>
-          <input type="range" id="param-reno" min="200" max="1000" step="10" value="900">
-          <div class="range-limits"><span>200万</span><span>1,000万</span></div>
+          <input type="range" id="param-reno">
+          <div class="range-limits"><span id="limit-reno-min"></span><span id="limit-reno-max"></span></div>
         </div>
 
         <!-- 投入自己資金コンテナ -->
         <div class="equity-box">
           <div class="equity-header">
             <span class="equity-title">💰 投入自己資金</span>
-            <span class="equity-total-badge">自己資金合計: <span id="disp-equity-total">500</span> 万円</span>
+            <span class="equity-total-badge">自己資金合計: <span id="disp-equity-total">0</span> 万円</span>
           </div>
 
           <!-- 物件頭金 -->
           <div style="margin-bottom: 4px;">
             <div class="control-header">
               <span style="font-size: 0.72rem; color: #1e3a8a; font-weight: 600;">物件頭金</span>
-              <span class="control-val" id="disp-equity-down">400 万円</span>
+              <span class="control-val" id="disp-equity-down"></span>
             </div>
-            <input type="range" id="param-equity-down" min="0" max="500" step="10" value="400">
-            <div class="range-limits"><span>0万</span><span>500万</span></div>
+            <input type="range" id="param-equity-down">
+            <div class="range-limits"><span id="limit-down-min"></span><span id="limit-down-max"></span></div>
           </div>
 
           <!-- 諸経費 -->
           <div>
             <div class="control-header">
               <span style="font-size: 0.72rem; color: #1e3a8a; font-weight: 600;">諸経費</span>
-              <span class="control-val" id="disp-equity-misc">100 万円</span>
+              <span class="control-val" id="disp-equity-misc"></span>
             </div>
-            <input type="range" id="param-equity-misc" min="0" max="200" step="10" value="100">
-            <div class="range-limits"><span>0万</span><span>200万</span></div>
+            <input type="range" id="param-equity-misc">
+            <div class="range-limits"><span id="limit-misc-min"></span><span id="limit-misc-max"></span></div>
           </div>
         </div>
 
@@ -246,20 +305,20 @@
         <div class="control-group">
           <div class="control-header">
             <span>想定月額賃料</span>
-            <span class="control-val" id="disp-rent">17.0 万円</span>
+            <span class="control-val" id="disp-rent"></span>
           </div>
-          <input type="range" id="param-rent" min="14.0" max="25.0" step="0.5" value="17.0">
-          <div class="range-limits"><span>14.0万</span><span>下限:17万 / 目標:18.5万 / 法人:20万</span><span>25.0万</span></div>
+          <input type="range" id="param-rent">
+          <div class="range-limits"><span id="limit-rent-min"></span><span>下限:17万 / 目標:18.5万 / 法人:20万</span><span id="limit-rent-max"></span></div>
         </div>
 
         <!-- 運営経費率 -->
         <div class="control-group" style="margin-bottom: 0;">
           <div class="control-header">
             <span>運営経費率（管理費・固都税・修繕積立等）</span>
-            <span class="control-val" id="disp-opex">22 %</span>
+            <span class="control-val" id="disp-opex"></span>
           </div>
-          <input type="range" id="param-opex" min="10" max="30" step="1" value="22">
-          <div class="range-limits"><span>10%</span><span>実費設計推奨: 20%〜22%</span><span>30%</span></div>
+          <input type="range" id="param-opex">
+          <div class="range-limits"><span id="limit-opex-min"></span><span>実費設計推奨: 20%〜22%</span><span id="limit-opex-max"></span></div>
         </div>
       </div>
 
@@ -278,15 +337,15 @@
           <div class="inline-inputs">
             <div class="input-field">
               <label>借入額 (万)</label>
-              <input type="number" id="loan-bank-amount" value="2800" step="10" min="0" inputmode="numeric">
+              <input type="number" id="loan-bank-amount" step="10" min="0" inputmode="numeric">
             </div>
             <div class="input-field">
               <label>金利 (%)</label>
-              <input type="number" id="loan-bank-rate" value="4.0" step="0.1" min="0" inputmode="decimal">
+              <input type="number" id="loan-bank-rate" step="0.1" min="0" inputmode="decimal">
             </div>
             <div class="input-field">
               <label>期間 (年)</label>
-              <input type="number" id="loan-bank-years" value="25" step="1" min="1" max="50" inputmode="numeric">
+              <input type="number" id="loan-bank-years" step="1" min="1" max="50" inputmode="numeric">
             </div>
           </div>
         </div>
@@ -300,15 +359,15 @@
           <div class="inline-inputs">
             <div class="input-field">
               <label>借入額 (万)</label>
-              <input type="number" id="loan-koko-eq-amount" value="900" step="10" min="0" inputmode="numeric">
+              <input type="number" id="loan-koko-eq-amount" step="10" min="0" inputmode="numeric">
             </div>
             <div class="input-field">
               <label>金利 (%)</label>
-              <input type="number" id="loan-koko-eq-rate" value="2.2" step="0.1" min="0" inputmode="decimal">
+              <input type="number" id="loan-koko-eq-rate" step="0.1" min="0" inputmode="decimal">
             </div>
             <div class="input-field">
               <label>期間 (年)</label>
-              <input type="number" id="loan-koko-eq-years" value="15" step="1" min="1" max="50" inputmode="numeric">
+              <input type="number" id="loan-koko-eq-years" step="1" min="1" max="50" inputmode="numeric">
             </div>
           </div>
         </div>
@@ -330,19 +389,19 @@
         <div class="kpi-row">
           <div class="kpi-box">
             <div class="label">総事業費</div>
-            <div class="value" id="kpi-total">3,300 万円</div>
+            <div class="value" id="kpi-total">0 万円</div>
           </div>
           <div class="kpi-box">
             <div class="label">表面利回り</div>
-            <div class="value" id="kpi-gross-yield">6.18 %</div>
+            <div class="value" id="kpi-gross-yield">0.00 %</div>
           </div>
           <div class="kpi-box">
             <div class="label">実質利回り</div>
-            <div class="value" id="kpi-net-yield">4.82 %</div>
+            <div class="value" id="kpi-net-yield">0.00 %</div>
           </div>
           <div class="kpi-box">
             <div class="label">月額総返済</div>
-            <div class="value" id="kpi-repay">14.8 万円</div>
+            <div class="value" id="kpi-repay">0.0 万円</div>
           </div>
           <div class="kpi-box" style="background: #e0f2fe;">
             <div class="label" style="color: #0369a1;">回収年数(CCR)</div>
@@ -431,6 +490,19 @@
       dispRent: document.getElementById('disp-rent'),
       dispOpex: document.getElementById('disp-opex'),
 
+      limitPriceMin: document.getElementById('limit-price-min'),
+      limitPriceMax: document.getElementById('limit-price-max'),
+      limitRenoMin: document.getElementById('limit-reno-min'),
+      limitRenoMax: document.getElementById('limit-reno-max'),
+      limitDownMin: document.getElementById('limit-down-min'),
+      limitDownMax: document.getElementById('limit-down-max'),
+      limitMiscMin: document.getElementById('limit-misc-min'),
+      limitMiscMax: document.getElementById('limit-misc-max'),
+      limitRentMin: document.getElementById('limit-rent-min'),
+      limitRentMax: document.getElementById('limit-rent-max'),
+      limitOpexMin: document.getElementById('limit-opex-min'),
+      limitOpexMax: document.getElementById('limit-opex-max'),
+
       balanceIndicator: document.getElementById('balance-indicator'),
       balanceStatusText: document.getElementById('balance-status-text'),
       balanceDiffText: document.getElementById('balance-diff-text'),
@@ -460,6 +532,40 @@
       tableHeadRow: document.getElementById('table-head-row'),
       tableBody: document.getElementById('table-body')
     };
+
+    // --- 上部のDEFAULT_CONFIGを設定へ反映 ---
+    function applyConfig() {
+      const cfg = DEFAULT_CONFIG;
+
+      // 1. スライダー属性と初期値
+      const setupSlider = (elem, conf, minEl, maxEl, unit = '万') => {
+        elem.min = conf.min;
+        elem.max = conf.max;
+        elem.step = conf.step;
+        elem.value = conf.val;
+        if (minEl) minEl.textContent = `${conf.min.toLocaleString()}${unit}`;
+        if (maxEl) maxEl.textContent = `${conf.max.toLocaleString()}${unit}`;
+      };
+
+      setupSlider(dom.price, cfg.price, dom.limitPriceMin, dom.limitPriceMax, '万');
+      setupSlider(dom.reno, cfg.reno, dom.limitRenoMin, dom.limitRenoMax, '万');
+      setupSlider(dom.equityDown, cfg.equityDown, dom.limitDownMin, dom.limitDownMax, '万');
+      setupSlider(dom.equityMisc, cfg.equityMisc, dom.limitMiscMin, dom.limitMiscMax, '万');
+      setupSlider(dom.rent, cfg.rent, dom.limitRentMin, dom.limitRentMax, '万');
+      setupSlider(dom.opex, cfg.opex, dom.limitOpexMin, dom.limitOpexMax, '%');
+
+      // 2. 借入条件
+      dom.bankAmt.value = cfg.bank.amount;
+      dom.bankRate.value = cfg.bank.rate;
+      dom.bankYrs.value = cfg.bank.years;
+
+      dom.kokoEqEnable.checked = cfg.kokoEq.enabled;
+      dom.kokoEqAmt.value = cfg.kokoEq.amount;
+      dom.kokoEqRate.value = cfg.kokoEq.rate;
+      dom.kokoEqYrs.value = cfg.kokoEq.years;
+    }
+
+    applyConfig();
 
     let currentChartMode = 'cf';
     const ctx = document.getElementById('cfChart').getContext('2d');
