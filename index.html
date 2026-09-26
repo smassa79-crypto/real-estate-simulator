@@ -19,8 +19,8 @@
         step: 10
       },
       reno: {
-        val: 1000,      // リノベーション費用 初期値 (万円)
-        min: 300,       // 下限 (万円)
+        val: 1000,      // リフォーム費用 初期値 (万円)
+        min: 0,         // 下限 (万円)
         max: 1500,      // 上限 (万円)
         step: 10
       },
@@ -43,7 +43,7 @@
         step: 0.5
       },
       opex: {
-        val: 22,        // 運営経費率 (%)
+        val: 24,        // 運営経費率 初期値 (%)
         min: 10,
         max: 30,
         step: 1
@@ -78,39 +78,42 @@
       --accent-yellow: #f59e0b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); padding: 10px 14px; height: 100vh; overflow-x: hidden; }
+    body { background-color: var(--bg); color: var(--text); padding: 6px 12px; height: 100vh; overflow-x: hidden; }
     
     .header { 
       background: var(--primary); 
       color: white; 
-      padding: 8px 14px; 
-      border-radius: 6px; 
-      margin-bottom: 8px; 
+      padding: 6px 12px; 
+      border-radius: 5px; 
+      margin-bottom: 6px; 
     }
-    .header h1 { font-size: 0.95rem; margin: 0; font-weight: 700; }
+    .header h1 { font-size: 0.88rem; margin: 0; font-weight: 700; }
 
-    .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
-    @media (max-width: 850px) { .grid-layout { grid-template-columns: 1fr; } body { height: auto; } }
+    .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
+    @media (max-width: 850px) { 
+      .grid-layout { grid-template-columns: 1fr; } 
+      body { height: auto; padding: 8px; } 
+    }
     
-    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); margin-bottom: 8px; }
-    .card h2 { font-size: 0.85rem; margin-bottom: 8px; border-bottom: 1.5px solid var(--border); padding-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 5px; padding: 7px 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); margin-bottom: 6px; }
+    .card h2 { font-size: 0.80rem; margin-bottom: 5px; border-bottom: 1.5px solid var(--border); padding-bottom: 3px; display: flex; align-items: center; justify-content: space-between; }
     
     .method-badge {
-      font-size: 0.65rem;
+      font-size: 0.62rem;
       font-weight: normal;
       background: #e0f2fe;
       color: #0369a1;
-      padding: 1px 6px;
-      border-radius: 4px;
+      padding: 1px 5px;
+      border-radius: 3px;
       border: 1px solid #bae6fd;
     }
 
     .balance-indicator {
-      padding: 4px 8px;
+      padding: 3px 6px;
       border-radius: 4px;
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       font-weight: bold;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -122,88 +125,112 @@
     .kpi-row { 
       display: grid; 
       grid-template-columns: repeat(5, 1fr); 
-      gap: 6px; 
-      margin-bottom: 8px; 
+      gap: 5px; 
+      margin-bottom: 6px; 
     }
-    .kpi-box { background: #f1f5f9; padding: 6px 2px; border-radius: 4px; text-align: center; }
-    .kpi-box .label { font-size: 0.62rem; color: var(--text-muted); margin-bottom: 2px; }
-    .kpi-box .value { font-size: 0.88rem; font-weight: bold; color: var(--primary); white-space: nowrap; }
+    .kpi-box { background: #f1f5f9; padding: 4px 2px; border-radius: 4px; text-align: center; }
+    .kpi-box .label { font-size: 0.58rem; color: var(--text-muted); margin-bottom: 1px; }
+    .kpi-box .value { font-size: 0.82rem; font-weight: bold; color: var(--primary); white-space: nowrap; }
 
-    .control-group { margin-bottom: 8px; }
-    .control-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; font-size: 0.75rem; }
-    .control-val { font-weight: bold; color: var(--primary); font-size: 0.82rem; }
-    input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--primary); height: 4px; }
-    .range-limits { display: flex; justify-content: space-between; font-size: 0.6rem; color: var(--text-muted); margin-top: 1px; }
+    .control-group { margin-bottom: 5px; }
+    .control-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px; font-size: 0.72rem; }
+    .control-val { font-weight: bold; color: var(--primary); font-size: 0.78rem; }
+    input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--primary); height: 3px; }
+    .range-limits { display: flex; justify-content: space-between; font-size: 0.58rem; color: var(--text-muted); margin-top: 1px; }
+
+    .opex-sub-text {
+      font-size: 0.58rem;
+      color: var(--text-muted);
+      font-weight: normal;
+      margin-left: 3px;
+    }
+
+    .btn-helper {
+      background: #e0f2fe;
+      border: 1px solid #bae6fd;
+      color: #0369a1;
+      font-size: 0.58rem;
+      padding: 1px 5px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn-helper:hover {
+      background: #bae6fd;
+      color: #0284c7;
+    }
 
     .equity-box {
       background: #eff6ff;
-      padding: 6px 10px;
-      border-radius: 6px;
+      padding: 5px 8px;
+      border-radius: 5px;
       border: 1px solid #bfdbfe;
-      margin-bottom: 8px;
+      margin-bottom: 5px;
     }
     .equity-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 4px;
-      padding-bottom: 3px;
+      margin-bottom: 3px;
+      padding-bottom: 2px;
       border-bottom: 1px dashed #bfdbfe;
     }
-    .equity-title { font-size: 0.75rem; font-weight: 700; color: #1e3a8a; }
+    .equity-title { font-size: 0.72rem; font-weight: 700; color: #1e3a8a; }
     .equity-total-badge {
       background: #1e3a8a;
       color: white;
-      padding: 1px 6px;
-      border-radius: 12px;
-      font-size: 0.68rem;
+      padding: 1px 5px;
+      border-radius: 10px;
+      font-size: 0.62rem;
       font-weight: bold;
     }
 
     .sub-section-title { 
-      font-size: 0.78rem; 
+      font-size: 0.74rem; 
       font-weight: 700; 
       color: var(--secondary); 
-      margin: 6px 0 4px; 
+      margin: 4px 0 3px; 
       padding-left: 4px; 
       border-left: 3px solid var(--secondary); 
       display: flex; 
       align-items: center; 
-      gap: 6px; 
+      gap: 5px; 
     }
-    .sub-section-title input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; accent-color: var(--primary); }
+    .sub-section-title input[type="checkbox"] { width: 13px; height: 13px; cursor: pointer; accent-color: var(--primary); }
     .sub-section-title input[type="checkbox"]:disabled { cursor: not-allowed; opacity: 0.6; }
 
     .loan-inputs-container { transition: opacity 0.2s; }
     .loan-inputs-container.disabled { opacity: 0.35; pointer-events: none; }
 
-    .inline-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
-    .input-field label { display: block; font-size: 0.65rem; color: var(--text-muted); margin-bottom: 1px; }
-    .input-field input { width: 100%; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.78rem; }
+    .inline-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 3px; }
+    .input-field label { display: block; font-size: 0.62rem; color: var(--text-muted); margin-bottom: 1px; }
+    .input-field input { width: 100%; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.74rem; }
     .input-field input.mismatch { border-color: var(--accent-red); background-color: #fff5f5; }
 
     .table-container { 
       overflow-x: auto; 
       border: 1px solid var(--border);
       border-radius: 4px;
-      margin-top: 6px;
+      margin-top: 4px;
     }
-    .breakdown-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
-    .breakdown-table th, .breakdown-table td { border-bottom: 1px solid var(--border); padding: 4px 6px; text-align: right; white-space: nowrap; }
+    .breakdown-table { width: 100%; border-collapse: collapse; font-size: 0.68rem; }
+    .breakdown-table th, .breakdown-table td { border-bottom: 1px solid var(--border); padding: 3px 5px; text-align: right; white-space: nowrap; }
     .breakdown-table th:first-child, .breakdown-table td:first-child { text-align: left; background: #fafafa; }
-    .breakdown-table th { background: #f8fafc; font-weight: 600; padding: 4px 6px; }
+    .breakdown-table th { background: #f8fafc; font-weight: 600; padding: 3px 5px; }
     .breakdown-table tr.total-row { background: #f1f5f9; font-weight: bold; }
     .breakdown-table tr.annual-total-row { background: #f8fafc; font-weight: bold; border-top: 1.5px solid var(--border); }
 
     .loan-badge {
       display: inline-block;
       margin-left: 2px;
-      padding: 0 4px;
-      font-size: 0.62rem;
+      padding: 0 3px;
+      font-size: 0.58rem;
       background: #e0f2fe;
       color: #0284c7;
       border: 1px solid #bae6fd;
-      border-radius: 8px;
+      border-radius: 6px;
       font-weight: 700;
     }
 
@@ -211,19 +238,19 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-top: 8px;
+      margin-top: 6px;
     }
     .chart-toggle-group {
       display: inline-flex;
       border: 1px solid var(--border);
-      border-radius: 4px;
+      border-radius: 3px;
       overflow: hidden;
     }
     .chart-btn {
       background: #f8fafc;
       border: none;
-      padding: 2px 8px;
-      font-size: 0.68rem;
+      padding: 2px 7px;
+      font-size: 0.62rem;
       font-weight: 600;
       color: var(--text-muted);
       cursor: pointer;
@@ -236,8 +263,8 @@
     .chart-wrapper {
       position: relative;
       width: 100%;
-      height: 145px;
-      margin-top: 4px;
+      height: 120px;
+      margin-top: 3px;
     }
   </style>
 </head>
@@ -263,10 +290,10 @@
           <div class="range-limits"><span id="limit-price-min"></span><span id="limit-price-max"></span></div>
         </div>
 
-        <!-- リノベーション費用 -->
+        <!-- リフォーム費用 -->
         <div class="control-group">
           <div class="control-header">
-            <span>リノベーション費用</span>
+            <span>リフォーム費用</span>
             <span class="control-val" id="disp-reno"></span>
           </div>
           <input type="range" id="param-reno">
@@ -281,9 +308,9 @@
           </div>
 
           <!-- 物件頭金 -->
-          <div style="margin-bottom: 4px;">
+          <div style="margin-bottom: 3px;">
             <div class="control-header">
-              <span style="font-size: 0.72rem; color: #1e3a8a; font-weight: 600;">物件頭金</span>
+              <span style="font-size: 0.68rem; color: #1e3a8a; font-weight: 600;">物件頭金</span>
               <span class="control-val" id="disp-equity-down"></span>
             </div>
             <input type="range" id="param-equity-down">
@@ -293,7 +320,7 @@
           <!-- 諸経費 -->
           <div>
             <div class="control-header">
-              <span style="font-size: 0.72rem; color: #1e3a8a; font-weight: 600;">諸経費</span>
+              <span style="font-size: 0.68rem; color: #1e3a8a; font-weight: 600;">諸経費</span>
               <span class="control-val" id="disp-equity-misc"></span>
             </div>
             <input type="range" id="param-equity-misc">
@@ -314,8 +341,14 @@
         <!-- 運営経費率 -->
         <div class="control-group" style="margin-bottom: 0;">
           <div class="control-header">
-            <span>運営経費率（管理費・固都税・修繕積立等）</span>
-            <span class="control-val" id="disp-opex"></span>
+            <span style="display: flex; align-items: baseline; flex-wrap: wrap;">
+              <span>運営経費率（目安4万円）</span>
+              <span class="opex-sub-text">※想定：管理費：1万円、固都税：1万円、火災地震保険：1万、修繕積立：1万円</span>
+            </span>
+            <div style="display: flex; align-items: center; gap: 4px; margin-left: 4px;">
+              <button type="button" class="btn-helper" id="btn-set-opex-40k">4万円以上に自動設定</button>
+              <span class="control-val" id="disp-opex"></span>
+            </div>
           </div>
           <input type="range" id="param-opex">
           <div class="range-limits"><span id="limit-opex-min"></span><span>実費設計推奨: 20%〜22%</span><span id="limit-opex-max"></span></div>
@@ -421,7 +454,7 @@
 
         <!-- グラフ切り替えボタン -->
         <div class="chart-header">
-          <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">📈 グラフ表示</span>
+          <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">📈 グラフ表示</span>
           <div class="chart-toggle-group">
             <button type="button" class="chart-btn active" id="btn-chart-cf">月額収支・CF</button>
             <button type="button" class="chart-btn" id="btn-chart-debt">借入残債推移</button>
@@ -481,6 +514,7 @@
       equityMisc: document.getElementById('param-equity-misc'),
       rent: document.getElementById('param-rent'),
       opex: document.getElementById('param-opex'),
+      btnSetOpex40k: document.getElementById('btn-set-opex-40k'),
 
       dispPrice: document.getElementById('disp-price'),
       dispReno: document.getElementById('disp-reno'),
@@ -533,11 +567,9 @@
       tableBody: document.getElementById('table-body')
     };
 
-    // --- 上部のDEFAULT_CONFIGを設定へ反映 ---
     function applyConfig() {
       const cfg = DEFAULT_CONFIG;
 
-      // 1. スライダー属性と初期値
       const setupSlider = (elem, conf, minEl, maxEl, unit = '万') => {
         elem.min = conf.min;
         elem.max = conf.max;
@@ -554,7 +586,6 @@
       setupSlider(dom.rent, cfg.rent, dom.limitRentMin, dom.limitRentMax, '万');
       setupSlider(dom.opex, cfg.opex, dom.limitOpexMin, dom.limitOpexMax, '%');
 
-      // 2. 借入条件
       dom.bankAmt.value = cfg.bank.amount;
       dom.bankRate.value = cfg.bank.rate;
       dom.bankYrs.value = cfg.bank.years;
@@ -583,13 +614,13 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: { labels: { boxWidth: 10, font: { size: 10 } } }
+              legend: { labels: { boxWidth: 9, font: { size: 9 } } }
             },
             scales: {
-              x: { ticks: { font: { size: 9 } } },
+              x: { ticks: { font: { size: 8.5 } } },
               y: { 
                 title: { display: false },
-                ticks: { font: { size: 9 }, callback: v => v.toLocaleString() + '円' }
+                ticks: { font: { size: 8.5 }, callback: v => v.toLocaleString() + '円' }
               }
             }
           }
@@ -603,12 +634,12 @@
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-              legend: { labels: { boxWidth: 10, font: { size: 10 } } }
+              legend: { labels: { boxWidth: 9, font: { size: 9 } } }
             },
             scales: {
               x: { 
                 ticks: { 
-                  font: { size: 9 },
+                  font: { size: 8.5 },
                   maxRotation: 45,
                   minRotation: 0,
                   autoSkip: true,
@@ -616,8 +647,8 @@
                 } 
               },
               y: { 
-                title: { display: true, text: '残債 (万円)', font: { size: 9 } },
-                ticks: { font: { size: 9 }, callback: v => v.toLocaleString() + '万' },
+                title: { display: true, text: '残債 (万円)', font: { size: 8.5 } },
+                ticks: { font: { size: 8.5 }, callback: v => v.toLocaleString() + '万' },
                 min: 0
               }
             }
@@ -880,8 +911,8 @@
             backgroundColor: 'rgba(30, 58, 138, 0.08)',
             fill: true,
             tension: 0.15,
-            borderWidth: 2.5,
-            pointRadius: 2
+            borderWidth: 2,
+            pointRadius: 1.5
           }
         ];
 
@@ -892,7 +923,7 @@
             borderColor: '#0284c7',
             borderDash: [4, 4],
             tension: 0.15,
-            borderWidth: 1.5,
+            borderWidth: 1.2,
             pointRadius: 0
           });
           lineDatasets.push({
@@ -901,7 +932,7 @@
             borderColor: '#f59e0b',
             borderDash: [3, 3],
             tension: 0.15,
-            borderWidth: 1.5,
+            borderWidth: 1.2,
             pointRadius: 0
           });
         }
@@ -935,6 +966,26 @@
 
     dom.kokoEqAmt.addEventListener('input', () => {
       isKokoAmtManuallyEdited = true;
+      calculate();
+    });
+
+    // 運営経費を40,000円「以上」にする最小の%に自動設定するボタン
+    dom.btnSetOpex40k.addEventListener('click', () => {
+      const rentYen = (parseFloat(dom.rent.value) || 0) * 10000;
+      if (rentYen <= 0) return;
+      
+      const minOpexPercent = parseFloat(dom.opex.min) || 10;
+      const maxOpexPercent = parseFloat(dom.opex.max) || 30;
+
+      let targetPercent = maxOpexPercent;
+      for (let p = Math.ceil(minOpexPercent); p <= maxOpexPercent; p++) {
+        if (Math.round(rentYen * (p / 100)) >= 40000) {
+          targetPercent = p;
+          break;
+        }
+      }
+
+      dom.opex.value = targetPercent;
       calculate();
     });
 
