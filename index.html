@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>不動産投資採算・収支CFシミュレーター</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -78,7 +78,16 @@
       --accent-yellow: #f59e0b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); padding: 6px 12px; height: 100vh; overflow-x: hidden; }
+    html { width: 100%; overflow-x: hidden; }
+    body { 
+      background-color: var(--bg); 
+      color: var(--text); 
+      padding: 6px 12px; 
+      min-height: 100vh; 
+      width: 100%;
+      max-width: 100vw;
+      overflow-x: hidden; 
+    }
     
     .header { 
       background: var(--primary); 
@@ -86,16 +95,28 @@
       padding: 6px 12px; 
       border-radius: 5px; 
       margin-bottom: 6px; 
+      width: 100%;
     }
     .header h1 { font-size: 0.88rem; margin: 0; font-weight: 700; }
 
-    .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
-    @media (max-width: 850px) { 
-      .grid-layout { grid-template-columns: 1fr; } 
-      body { height: auto; padding: 8px; } 
+    .grid-layout { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 8px; 
+      align-items: start; 
+      width: 100%;
     }
     
-    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 5px; padding: 7px 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); margin-bottom: 6px; }
+    .card { 
+      background: var(--card-bg); 
+      border: 1px solid var(--border); 
+      border-radius: 5px; 
+      padding: 7px 10px; 
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02); 
+      margin-bottom: 6px; 
+      width: 100%;
+      min-width: 0; /* flex/gridのはみ出し防止 */
+    }
     .card h2 { font-size: 0.80rem; margin-bottom: 5px; border-bottom: 1.5px solid var(--border); padding-bottom: 3px; display: flex; align-items: center; justify-content: space-between; }
     
     .method-badge {
@@ -117,6 +138,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 4px;
     }
     .balance-matched { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
     .balance-shortage { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
@@ -128,13 +150,13 @@
       gap: 5px; 
       margin-bottom: 6px; 
     }
-    .kpi-box { background: #f1f5f9; padding: 4px 2px; border-radius: 4px; text-align: center; }
-    .kpi-box .label { font-size: 0.58rem; color: var(--text-muted); margin-bottom: 1px; }
-    .kpi-box .value { font-size: 0.82rem; font-weight: bold; color: var(--primary); white-space: nowrap; }
+    .kpi-box { background: #f1f5f9; padding: 4px 2px; border-radius: 4px; text-align: center; min-width: 0; }
+    .kpi-box .label { font-size: 0.58rem; color: var(--text-muted); margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kpi-box .value { font-size: 0.80rem; font-weight: bold; color: var(--primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .control-group { margin-bottom: 5px; }
     .control-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px; font-size: 0.72rem; }
-    .control-val { font-weight: bold; color: var(--primary); font-size: 0.78rem; }
+    .control-val { font-weight: bold; color: var(--primary); font-size: 0.78rem; white-space: nowrap; }
     input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--primary); height: 3px; }
     .range-limits { display: flex; justify-content: space-between; font-size: 0.58rem; color: var(--text-muted); margin-top: 1px; }
 
@@ -198,7 +220,7 @@
       align-items: center; 
       gap: 5px; 
     }
-    .sub-section-title input[type="checkbox"] { width: 13px; height: 13px; cursor: pointer; accent-color: var(--primary); }
+    .sub-section-title input[type="checkbox"] { width: 13px; height: 13px; cursor: pointer; accent-color: var(--primary); flex-shrink: 0; }
     .sub-section-title input[type="checkbox"]:disabled { cursor: not-allowed; opacity: 0.6; }
 
     .loan-inputs-container { transition: opacity 0.2s; }
@@ -209,15 +231,33 @@
     .input-field input { width: 100%; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.74rem; }
     .input-field input.mismatch { border-color: var(--accent-red); background-color: #fff5f5; }
 
+    /* テーブルのはみ出しと横スクロール制御 */
     .table-container { 
+      width: 100%;
+      max-width: 100%;
       overflow-x: auto; 
+      -webkit-overflow-scrolling: touch;
       border: 1px solid var(--border);
       border-radius: 4px;
       margin-top: 4px;
     }
-    .breakdown-table { width: 100%; border-collapse: collapse; font-size: 0.68rem; }
-    .breakdown-table th, .breakdown-table td { border-bottom: 1px solid var(--border); padding: 3px 5px; text-align: right; white-space: nowrap; }
-    .breakdown-table th:first-child, .breakdown-table td:first-child { text-align: left; background: #fafafa; }
+    .breakdown-table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      font-size: 0.68rem; 
+      table-layout: auto;
+    }
+    .breakdown-table th, .breakdown-table td { 
+      border-bottom: 1px solid var(--border); 
+      padding: 3px 5px; 
+      text-align: right; 
+      white-space: nowrap; 
+    }
+    .breakdown-table th:first-child, .breakdown-table td:first-child { 
+      text-align: left; 
+      background: #fafafa; 
+      white-space: nowrap;
+    }
     .breakdown-table th { background: #f8fafc; font-weight: 600; padding: 3px 5px; }
     .breakdown-table tr.total-row { background: #f1f5f9; font-weight: bold; }
     .breakdown-table tr.annual-total-row { background: #f8fafc; font-weight: bold; border-top: 1.5px solid var(--border); }
@@ -265,6 +305,22 @@
       width: 100%;
       height: 120px;
       margin-top: 3px;
+    }
+
+    /* スマホ・狭画面向けレスポンシブ最適化 */
+    @media (max-width: 850px) { 
+      .grid-layout { grid-template-columns: 1fr; } 
+      body { height: auto; padding: 6px 8px; } 
+    }
+
+    @media (max-width: 600px) {
+      .header h1 { font-size: 0.82rem; }
+      .control-header { flex-wrap: wrap; gap: 2px; }
+      .breakdown-table { font-size: 0.60rem; }
+      .breakdown-table th, .breakdown-table td { padding: 3px 3px; }
+      .kpi-row { gap: 3px; }
+      .kpi-box .value { font-size: 0.72rem; }
+      .balance-indicator { font-size: 0.62rem; flex-wrap: wrap; }
     }
   </style>
 </head>
@@ -854,17 +910,17 @@
       const fmtMinus = (val) => val > 0 ? '▲' + Math.round(val).toLocaleString() + ' 円' : '0 円';
       const formatYenWithSign = (val) => (val >= 0 ? '+' : '') + Math.round(val).toLocaleString() + ' 円';
 
-      let theadHtml = '<th>収支内訳項目</th>';
+      let theadHtml = '<th>収支項目</th>';
       stages.forEach(s => { theadHtml += `<th>${s.label}</th>`; });
       dom.tableHeadRow.innerHTML = theadHtml;
 
       let rentRow = `<tr><td>想定月額賃料</td>${stages.map(() => `<td>${fmtYen(rentYen)}</td>`).join('')}</tr>`;
-      let opexRow = `<tr><td>運営管理経費 (${Math.round(opexRate * 100)}%)</td>${stages.map(() => `<td>${fmtMinus(opexYen)}</td>`).join('')}</tr>`;
-      let bankRow = `<tr><td>${bankLabelText} (${Math.round(bankAmt)}万)</td>${stages.map(s => `<td>${fmtMinus(s.repayBank)}</td>`).join('')}</tr>`;
+      let opexRow = `<tr><td>運営経費 (${Math.round(opexRate * 100)}%)</td>${stages.map(() => `<td>${fmtMinus(opexYen)}</td>`).join('')}</tr>`;
+      let bankRow = `<tr><td>① 民間 (${Math.round(bankAmt)}万)</td>${stages.map(s => `<td>${fmtMinus(s.repayBank)}</td>`).join('')}</tr>`;
       
       let eqRow = '';
       if (hasEq) {
-        eqRow = `<tr><td>② 公庫・設備 (${Math.round(eqAmt)}万)</td>${stages.map(s => `<td>${fmtMinus(s.repayEq)}</td>`).join('')}</tr>`;
+        eqRow = `<tr><td>② 公庫 (${Math.round(eqAmt)}万)</td>${stages.map(s => `<td>${fmtMinus(s.repayEq)}</td>`).join('')}</tr>`;
       }
       
       let cfRow = `<tr class="total-row"><td>税引前月額CF</td>` +
