@@ -58,8 +58,8 @@
       kokoEq: {
         enabled: false, // ② 公庫（設備資金）の初期有効/無効
         amount: 1000,   // 借入額 (万円)
-        rate: 2.2,      // 金利 (%)
-        years: 15       // 期間 (年)
+        rate: 4.44,     // 金利 (%) ★修正：4.44に変更
+        years: 10       // 期間 (年) ★修正：10年に変更
       }
     };
   </script>
@@ -115,7 +115,7 @@
       box-shadow: 0 1px 2px rgba(0,0,0,0.02); 
       margin-bottom: 6px; 
       width: 100%;
-      min-width: 0; /* flex/gridのはみ出し防止 */
+      min-width: 0;
     }
     .card h2 { font-size: 0.80rem; margin-bottom: 5px; border-bottom: 1.5px solid var(--border); padding-bottom: 3px; display: flex; align-items: center; justify-content: space-between; }
     
@@ -231,7 +231,6 @@
     .input-field input { width: 100%; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.74rem; }
     .input-field input.mismatch { border-color: var(--accent-red); background-color: #fff5f5; }
 
-    /* テーブルのはみ出しと横スクロール制御 */
     .table-container { 
       width: 100%;
       max-width: 100%;
@@ -256,7 +255,7 @@
     .breakdown-table th:first-child, .breakdown-table td:first-child { 
       text-align: left; 
       background: #fafafa; 
-      white-space: nowrap;
+      white-space: nowrap; 
     }
     .breakdown-table th { background: #f8fafc; font-weight: 600; padding: 3px 5px; }
     .breakdown-table tr.total-row { background: #f1f5f9; font-weight: bold; }
@@ -307,7 +306,6 @@
       margin-top: 3px;
     }
 
-    /* スマホ・狭画面向けレスポンシブ最適化 */
     @media (max-width: 850px) { 
       .grid-layout { grid-template-columns: 1fr; } 
       body { height: auto; padding: 6px 8px; } 
@@ -452,7 +450,7 @@
             </div>
             <div class="input-field">
               <label>金利 (%)</label>
-              <input type="number" id="loan-koko-eq-rate" step="0.1" min="0" inputmode="decimal">
+              <input type="number" id="loan-koko-eq-rate" step="0.01" min="0" inputmode="decimal">
             </div>
             <div class="input-field">
               <label>期間 (年)</label>
@@ -808,7 +806,7 @@
         isKokoAmtManuallyEdited = false;
       } else if (fundingDiff < 0) {
         dom.balanceIndicator.classList.add('balance-shortage');
-        dom.balanceStatusText.textContent = `⚠️ 調達不足：あと ${Math.abs(fundingDiff)} 万円必要`;
+        dom.balanceStatusText.textContent = `⚠️️ 調達不足：あと ${Math.abs(fundingDiff)} 万円必要`;
         dom.balanceDiffText.textContent = `不足 ▲${Math.abs(fundingDiff)} 万円`;
         dom.bankAmt.classList.add('mismatch');
       } else {
@@ -1025,7 +1023,6 @@
       calculate();
     });
 
-    // 運営経費を40,000円「以上」にする最小の%に自動設定するボタン
     dom.btnSetOpex40k.addEventListener('click', () => {
       const rentYen = (parseFloat(dom.rent.value) || 0) * 10000;
       if (rentYen <= 0) return;
