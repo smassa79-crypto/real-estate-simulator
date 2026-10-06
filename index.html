@@ -24,14 +24,28 @@
         max: 1500,      // 上限 (万円)
         step: 10
       },
-      equityDown: {
-        val: 400,       // 物件頭金 (万円)
+      // 自己資金の出どころ（合計が「自己資金合計」になります）
+      fundSbi: {
+        val: 600,       // SBI証券口座 (万円)
         min: 0,
         max: 1000,
         step: 10
       },
+      fundMahalo: {
+        val: 100,       // マハロ邸家賃口座 (万円)
+        min: 0,
+        max: 200,
+        step: 10
+      },
+      fundMariko: {
+        val: 100,       // 真理子口座 (万円)
+        min: 0,
+        max: 300,
+        step: 10
+      },
+      // 物件頭金＋リフォーム費用 = 自己資金合計 − 諸経費（自動計算）
       equityMisc: {
-        val: 100,       // 諸経費 (万円)
+        val: 150,       // 諸経費 (万円)
         min: 0,
         max: 300,
         step: 10
@@ -158,6 +172,17 @@
     .control-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px; font-size: 0.72rem; }
     .control-val { font-weight: bold; color: var(--primary); font-size: 0.78rem; white-space: nowrap; }
     input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--primary); height: 3px; }
+    input[type="range"]:disabled { cursor: not-allowed; opacity: 0.35; }
+    .zero-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 0.62rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .zero-toggle input { width: 12px; height: 12px; cursor: pointer; accent-color: var(--primary); }
     .range-limits { display: flex; justify-content: space-between; font-size: 0.58rem; color: var(--text-muted); margin-top: 1px; }
 
     .opex-sub-text {
@@ -200,6 +225,30 @@
       border-bottom: 1px dashed #bfdbfe;
     }
     .equity-title { font-size: 0.72rem; font-weight: 700; color: #1e3a8a; }
+    .equity-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px 10px;
+    }
+    .equity-grid .control-header span:first-child { font-size: 0.68rem; color: #1e3a8a; font-weight: 600; white-space: nowrap; }
+    .equity-alloc {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px 10px;
+      margin-top: 3px;
+      padding-top: 3px;
+      border-top: 1px dashed #bfdbfe;
+      align-items: start;
+    }
+    .equity-alloc .control-header span:first-child { font-size: 0.68rem; color: #1e3a8a; font-weight: 600; white-space: nowrap; }
+    .derived-box {
+      background: #ffffff;
+      border: 1px solid #bfdbfe;
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+    .derived-box .formula { font-size: 0.58rem; color: var(--text-muted); margin-top: 1px; }
+    .derived-box.negative .control-val { color: var(--accent-red); }
     .equity-total-badge {
       background: #1e3a8a;
       color: white;
@@ -319,6 +368,10 @@
       .kpi-row { gap: 3px; }
       .kpi-box .value { font-size: 0.72rem; }
       .balance-indicator { font-size: 0.62rem; flex-wrap: wrap; }
+      .equity-grid { grid-template-columns: 1fr; }
+      .equity-alloc { grid-template-columns: 1fr; }
+      .equity-header { flex-wrap: wrap; gap: 3px; }
+      input[type="range"] { height: 18px; }
     }
   </style>
 </head>
@@ -347,7 +400,10 @@
         <!-- リフォーム費用 -->
         <div class="control-group">
           <div class="control-header">
-            <span>リフォーム費用</span>
+            <span style="display: flex; align-items: center; gap: 8px;">
+              <span>リフォーム費用</span>
+              <label class="zero-toggle"><input type="checkbox" id="reno-zero">リフォームなし（0円）</label>
+            </span>
             <span class="control-val" id="disp-reno"></span>
           </div>
           <input type="range" id="param-reno">
@@ -361,24 +417,51 @@
             <span class="equity-total-badge">自己資金合計: <span id="disp-equity-total">0</span> 万円</span>
           </div>
 
-          <!-- 物件頭金 -->
-          <div style="margin-bottom: 3px;">
-            <div class="control-header">
-              <span style="font-size: 0.68rem; color: #1e3a8a; font-weight: 600;">物件頭金</span>
-              <span class="control-val" id="disp-equity-down"></span>
+          <!-- 自己資金の出どころ -->
+          <div class="equity-grid">
+            <div>
+              <div class="control-header">
+                <span>SBI証券口座</span>
+                <span class="control-val" id="disp-fund-sbi"></span>
+              </div>
+              <input type="range" id="param-fund-sbi">
+              <div class="range-limits"><span id="limit-sbi-min"></span><span id="limit-sbi-max"></span></div>
             </div>
-            <input type="range" id="param-equity-down">
-            <div class="range-limits"><span id="limit-down-min"></span><span id="limit-down-max"></span></div>
+            <div>
+              <div class="control-header">
+                <span>マハロ邸家賃口座</span>
+                <span class="control-val" id="disp-fund-mahalo"></span>
+              </div>
+              <input type="range" id="param-fund-mahalo">
+              <div class="range-limits"><span id="limit-mahalo-min"></span><span id="limit-mahalo-max"></span></div>
+            </div>
+            <div>
+              <div class="control-header">
+                <span>真理子口座</span>
+                <span class="control-val" id="disp-fund-mariko"></span>
+              </div>
+              <input type="range" id="param-fund-mariko">
+              <div class="range-limits"><span id="limit-mariko-min"></span><span id="limit-mariko-max"></span></div>
+            </div>
           </div>
 
-          <!-- 諸経費 -->
-          <div>
-            <div class="control-header">
-              <span style="font-size: 0.68rem; color: #1e3a8a; font-weight: 600;">諸経費</span>
-              <span class="control-val" id="disp-equity-misc"></span>
+          <!-- 自己資金の使い道 -->
+          <div class="equity-alloc">
+            <div>
+              <div class="control-header">
+                <span>諸経費</span>
+                <span class="control-val" id="disp-equity-misc"></span>
+              </div>
+              <input type="range" id="param-equity-misc">
+              <div class="range-limits"><span id="limit-misc-min"></span><span id="limit-misc-max"></span></div>
             </div>
-            <input type="range" id="param-equity-misc">
-            <div class="range-limits"><span id="limit-misc-min"></span><span id="limit-misc-max"></span></div>
+            <div class="derived-box" id="equity-down-box">
+              <div class="control-header">
+                <span>物件頭金＋リフォーム費用</span>
+                <span class="control-val" id="disp-equity-down"></span>
+              </div>
+              <div class="formula">＝ 自己資金合計 − 諸経費（自動計算）</div>
+            </div>
           </div>
         </div>
 
@@ -564,7 +647,11 @@
     const dom = {
       price: document.getElementById('param-price'),
       reno: document.getElementById('param-reno'),
-      equityDown: document.getElementById('param-equity-down'),
+      renoZero: document.getElementById('reno-zero'),
+      fundSbi: document.getElementById('param-fund-sbi'),
+      fundMahalo: document.getElementById('param-fund-mahalo'),
+      fundMariko: document.getElementById('param-fund-mariko'),
+      equityDownBox: document.getElementById('equity-down-box'),
       equityMisc: document.getElementById('param-equity-misc'),
       rent: document.getElementById('param-rent'),
       opex: document.getElementById('param-opex'),
@@ -572,6 +659,9 @@
 
       dispPrice: document.getElementById('disp-price'),
       dispReno: document.getElementById('disp-reno'),
+      dispFundSbi: document.getElementById('disp-fund-sbi'),
+      dispFundMahalo: document.getElementById('disp-fund-mahalo'),
+      dispFundMariko: document.getElementById('disp-fund-mariko'),
       dispEquityDown: document.getElementById('disp-equity-down'),
       dispEquityMisc: document.getElementById('disp-equity-misc'),
       dispEquityTotal: document.getElementById('disp-equity-total'),
@@ -582,8 +672,12 @@
       limitPriceMax: document.getElementById('limit-price-max'),
       limitRenoMin: document.getElementById('limit-reno-min'),
       limitRenoMax: document.getElementById('limit-reno-max'),
-      limitDownMin: document.getElementById('limit-down-min'),
-      limitDownMax: document.getElementById('limit-down-max'),
+      limitSbiMin: document.getElementById('limit-sbi-min'),
+      limitSbiMax: document.getElementById('limit-sbi-max'),
+      limitMahaloMin: document.getElementById('limit-mahalo-min'),
+      limitMahaloMax: document.getElementById('limit-mahalo-max'),
+      limitMarikoMin: document.getElementById('limit-mariko-min'),
+      limitMarikoMax: document.getElementById('limit-mariko-max'),
       limitMiscMin: document.getElementById('limit-misc-min'),
       limitMiscMax: document.getElementById('limit-misc-max'),
       limitRentMin: document.getElementById('limit-rent-min'),
@@ -635,7 +729,9 @@
 
       setupSlider(dom.price, cfg.price, dom.limitPriceMin, dom.limitPriceMax, '万');
       setupSlider(dom.reno, cfg.reno, dom.limitRenoMin, dom.limitRenoMax, '万');
-      setupSlider(dom.equityDown, cfg.equityDown, dom.limitDownMin, dom.limitDownMax, '万');
+      setupSlider(dom.fundSbi, cfg.fundSbi, dom.limitSbiMin, dom.limitSbiMax, '万');
+      setupSlider(dom.fundMahalo, cfg.fundMahalo, dom.limitMahaloMin, dom.limitMahaloMax, '万');
+      setupSlider(dom.fundMariko, cfg.fundMariko, dom.limitMarikoMin, dom.limitMarikoMax, '万');
       setupSlider(dom.equityMisc, cfg.equityMisc, dom.limitMiscMin, dom.limitMiscMax, '万');
       setupSlider(dom.rent, cfg.rent, dom.limitRentMin, dom.limitRentMax, '万');
       setupSlider(dom.opex, cfg.opex, dom.limitOpexMin, dom.limitOpexMax, '%');
@@ -731,13 +827,23 @@
       calculate();
     });
 
+    // 自己資金合計 = 各口座の合計、物件頭金＋リフォーム費用 = 自己資金合計 − 諸経費
+    function getEquity() {
+      const sbi = parseFloat(dom.fundSbi.value) || 0;
+      const mahalo = parseFloat(dom.fundMahalo.value) || 0;
+      const mariko = parseFloat(dom.fundMariko.value) || 0;
+      const misc = parseFloat(dom.equityMisc.value) || 0;
+      const total = sbi + mahalo + mariko;
+      return { sbi, mahalo, mariko, misc, total, down: total - misc };
+    }
+
     let isBankAmtManuallyEdited = false;
     let isKokoAmtManuallyEdited = false;
 
     function syncLoanAmounts(force = false) {
       const p = parseFloat(dom.price.value) || 0;
       const r = parseFloat(dom.reno.value) || 0;
-      const eqDown = parseFloat(dom.equityDown.value) || 0;
+      const eqDown = Math.max(0, getEquity().down);
       const hasEq = dom.kokoEqEnable.checked;
 
       if (hasEq) {
@@ -757,16 +863,21 @@
     function calculate() {
       const price = parseFloat(dom.price.value) || 0;
       const reno  = parseFloat(dom.reno.value) || 0;
-      const eqDown = parseFloat(dom.equityDown.value) || 0;
-      const eqMisc = parseFloat(dom.equityMisc.value) || 0;
-      const totalEquity = eqDown + eqMisc;
+      const eq = getEquity();
+      const eqDown = eq.down;
+      const eqMisc = eq.misc;
+      const totalEquity = eq.total;
 
       const rentMan = parseFloat(dom.rent.value) || 0;
       const opexRate = (parseFloat(dom.opex.value) || 0) / 100;
 
       dom.dispPrice.textContent = price.toLocaleString() + ' 万円';
       dom.dispReno.textContent  = reno.toLocaleString() + ' 万円';
+      dom.dispFundSbi.textContent = eq.sbi.toLocaleString() + ' 万円';
+      dom.dispFundMahalo.textContent = eq.mahalo.toLocaleString() + ' 万円';
+      dom.dispFundMariko.textContent = eq.mariko.toLocaleString() + ' 万円';
       dom.dispEquityDown.textContent = eqDown.toLocaleString() + ' 万円';
+      dom.equityDownBox.classList.toggle('negative', eqDown < 0);
       dom.dispEquityMisc.textContent = eqMisc.toLocaleString() + ' 万円';
       dom.dispEquityTotal.textContent = totalEquity.toLocaleString();
       dom.dispRent.textContent  = rentMan.toFixed(1) + ' 万円';
@@ -997,14 +1108,26 @@
       cfChart.update('none');
     }
 
-    [dom.price, dom.reno, dom.equityDown].forEach(el => {
+    [dom.price, dom.reno, dom.fundSbi, dom.fundMahalo, dom.fundMariko, dom.equityMisc].forEach(el => {
       el.addEventListener('input', () => {
         syncLoanAmounts(false);
         calculate();
       });
     });
 
-    dom.equityMisc.addEventListener('input', calculate);
+    // リフォームなし：チェックで0円・スライダー無効、外すと直前の金額に戻す
+    let renoBeforeZero = DEFAULT_CONFIG.reno.val;
+    dom.renoZero.addEventListener('change', () => {
+      if (dom.renoZero.checked) {
+        renoBeforeZero = parseFloat(dom.reno.value) || 0;
+        dom.reno.value = 0;
+      } else {
+        dom.reno.value = renoBeforeZero;
+      }
+      dom.reno.disabled = dom.renoZero.checked;
+      syncLoanAmounts(false);
+      calculate();
+    });
 
     dom.kokoEqEnable.addEventListener('change', () => {
       isBankAmtManuallyEdited = false;
