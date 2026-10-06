@@ -67,11 +67,12 @@
       bank: {
         amount: 3000,   // ① 民間金融機関 借入額 (万円) 
         rate: 4.0,      // 金利 (%)
-        years: 15       // 期間 (年)
+        years: 15,      // 期間 (年)
+        cap: 1800       // 借入上限 (万円)
       },
       kokoEq: {
         enabled: false, // ② 公庫（設備資金）の初期有効/無効
-        amount: 1000,   // 借入額 (万円)
+        // 借入額はリフォーム費用と同額で自動設定
         rate: 4.55,     // 金利 (%) 
         years: 10       // 期間 (年)
       }
@@ -160,7 +161,7 @@
 
     .kpi-row { 
       display: grid; 
-      grid-template-columns: repeat(5, 1fr); 
+      grid-template-columns: repeat(7, 1fr); 
       gap: 5px; 
       margin-bottom: 6px; 
     }
@@ -172,7 +173,6 @@
     .control-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px; font-size: 0.72rem; }
     .control-val { font-weight: bold; color: var(--primary); font-size: 0.78rem; white-space: nowrap; }
     input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--primary); height: 3px; }
-    input[type="range"]:disabled { cursor: not-allowed; opacity: 0.35; }
     .zero-toggle {
       display: inline-flex;
       align-items: center;
@@ -248,6 +248,7 @@
       padding: 2px 6px;
     }
     .derived-box .formula { font-size: 0.58rem; color: var(--text-muted); margin-top: 1px; }
+    .derived-box .formula.alert { color: var(--accent-red); font-weight: 700; }
     .derived-box.negative .control-val { color: var(--accent-red); }
     .equity-total-badge {
       background: #1e3a8a;
@@ -279,6 +280,20 @@
     .input-field label { display: block; font-size: 0.62rem; color: var(--text-muted); margin-bottom: 1px; }
     .input-field input { width: 100%; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.74rem; }
     .input-field input.mismatch { border-color: var(--accent-red); background-color: #fff5f5; }
+
+    .cap-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 3px 8px;
+      margin-bottom: 3px;
+      font-size: 0.62rem;
+    }
+    .cap-row label { color: var(--text-muted); white-space: nowrap; }
+    .cap-row input { width: 70px; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.74rem; }
+    .cap-status { font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+    .cap-status.ok { color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .cap-status.over { color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; }
 
     .table-container { 
       width: 100%;
@@ -365,7 +380,7 @@
       .control-header { flex-wrap: wrap; gap: 2px; }
       .breakdown-table { font-size: 0.60rem; }
       .breakdown-table th, .breakdown-table td { padding: 3px 3px; }
-      .kpi-row { gap: 3px; }
+      .kpi-row { gap: 3px; grid-template-columns: repeat(4, 1fr); }
       .kpi-box .value { font-size: 0.72rem; }
       .balance-indicator { font-size: 0.62rem; flex-wrap: wrap; }
       .equity-grid { grid-template-columns: 1fr; }
@@ -402,7 +417,7 @@
           <div class="control-header">
             <span style="display: flex; align-items: center; gap: 8px;">
               <span>リフォーム費用</span>
-              <label class="zero-toggle"><input type="checkbox" id="reno-zero">リフォーム借入なし（0円）</label>
+              <label class="zero-toggle"><input type="checkbox" id="reno-self">リフォーム融資なし</label>
             </span>
             <span class="control-val" id="disp-reno"></span>
           </div>
@@ -461,6 +476,7 @@
                 <span class="control-val" id="disp-equity-down"></span>
               </div>
               <div class="formula">＝ 自己資金合計 − 諸経費（自動計算）</div>
+              <div class="formula" id="reno-self-note" hidden></div>
             </div>
           </div>
         </div>
@@ -518,6 +534,11 @@
               <input type="number" id="loan-bank-years" step="1" min="1" max="50" inputmode="numeric">
             </div>
           </div>
+          <div class="cap-row">
+            <label for="loan-bank-cap">借入上限 (万)</label>
+            <input type="number" id="loan-bank-cap" step="10" min="0" inputmode="numeric">
+            <span class="cap-status" id="bank-cap-status"></span>
+          </div>
         </div>
 
         <!-- 日本政策金融公庫（設備） -->
@@ -568,6 +589,14 @@
           <div class="kpi-box">
             <div class="label">実質利回り</div>
             <div class="value" id="kpi-net-yield">0.00 %</div>
+          </div>
+          <div class="kpi-box" title="年間返済額 ÷ 借入額">
+            <div class="label">ローン定数(K%)</div>
+            <div class="value" id="kpi-loan-const">0.00 %</div>
+          </div>
+          <div class="kpi-box" title="実質利回り − ローン定数">
+            <div class="label">イールドギャップ</div>
+            <div class="value" id="kpi-yield-gap">0.00 %</div>
           </div>
           <div class="kpi-box">
             <div class="label">月額総返済</div>
@@ -647,7 +676,8 @@
     const dom = {
       price: document.getElementById('param-price'),
       reno: document.getElementById('param-reno'),
-      renoZero: document.getElementById('reno-zero'),
+      renoSelf: document.getElementById('reno-self'),
+      renoSelfNote: document.getElementById('reno-self-note'),
       fundSbi: document.getElementById('param-fund-sbi'),
       fundMahalo: document.getElementById('param-fund-mahalo'),
       fundMariko: document.getElementById('param-fund-mariko'),
@@ -695,6 +725,8 @@
       bankAmt: document.getElementById('loan-bank-amount'),
       bankRate: document.getElementById('loan-bank-rate'),
       bankYrs: document.getElementById('loan-bank-years'),
+      bankCap: document.getElementById('loan-bank-cap'),
+      bankCapStatus: document.getElementById('bank-cap-status'),
 
       kokoEqEnable: document.getElementById('loan-koko-eq-enable'),
       kokoEqContainer: document.getElementById('koko-eq-container'),
@@ -706,6 +738,8 @@
       kpiYield: document.getElementById('kpi-gross-yield'),
       kpiNetYield: document.getElementById('kpi-net-yield'),
       kpiRepay: document.getElementById('kpi-repay'),
+      kpiLoanConst: document.getElementById('kpi-loan-const'),
+      kpiYieldGap: document.getElementById('kpi-yield-gap'),
       kpiPayback: document.getElementById('kpi-payback'),
 
       btnChartCf: document.getElementById('btn-chart-cf'),
@@ -739,9 +773,10 @@
       dom.bankAmt.value = cfg.bank.amount;
       dom.bankRate.value = cfg.bank.rate;
       dom.bankYrs.value = cfg.bank.years;
+      dom.bankCap.value = cfg.bank.cap;
 
       dom.kokoEqEnable.checked = cfg.kokoEq.enabled;
-      dom.kokoEqAmt.value = cfg.kokoEq.amount;
+      dom.kokoEqAmt.value = cfg.reno.val;
       dom.kokoEqRate.value = cfg.kokoEq.rate;
       dom.kokoEqYrs.value = cfg.kokoEq.years;
     }
@@ -846,7 +881,17 @@
       const eqDown = Math.max(0, getEquity().down);
       const hasEq = dom.kokoEqEnable.checked;
 
-      if (hasEq) {
+      // 公庫（設備資金）が無効の間も、借入額の表示はリフォーム費用に合わせておく
+      if (!hasEq) {
+        dom.kokoEqAmt.value = Math.round(r);
+      }
+
+      if (dom.renoSelf.checked) {
+        // リフォーム費用は自己資金から先に充当し、融資は物件購入分のみ
+        if (!isBankAmtManuallyEdited || force) {
+          dom.bankAmt.value = Math.max(0, Math.round(p - Math.max(0, eqDown - r)));
+        }
+      } else if (hasEq) {
         if (!isKokoAmtManuallyEdited || force) {
           dom.kokoEqAmt.value = Math.round(r);
         }
@@ -889,9 +934,20 @@
       const opexYen = Math.round(rentYen * opexRate);
       const noiYen  = rentYen - opexYen;
 
+      const renoSelf = dom.renoSelf.checked;
       const hasEq = dom.kokoEqEnable.checked;
 
-      const bankLabelText = hasEq 
+      // リフォーム融資なし：自己資金（合計−諸経費）からリフォーム費用を支払い、残りを物件頭金に充当
+      dom.renoSelfNote.hidden = !renoSelf;
+      if (renoSelf) {
+        const renoShort = Math.round(reno - Math.max(0, eqDown));
+        dom.renoSelfNote.classList.toggle('alert', renoShort > 0);
+        dom.renoSelfNote.textContent = renoShort > 0
+          ? `⚠️ 自己資金不足：リフォーム費用に ${renoShort}万円 足りません`
+          : `内訳：リフォーム費用 ${reno.toLocaleString()}万 ＋ 物件頭金 ${Math.round(eqDown - reno).toLocaleString()}万`;
+      }
+
+      const bankLabelText = (hasEq || renoSelf) 
         ? '① 民間金融機関（物件購入資金）' 
         : '① 民間金融機関（物件購入資金、設備資金）';
       dom.bankTitleLabel.textContent = bankLabelText;
@@ -925,6 +981,17 @@
         dom.balanceStatusText.textContent = `ℹ️ 調達過剰：総事業費より +${fundingDiff} 万円余剰`;
         dom.balanceDiffText.textContent = `余剰 +${fundingDiff} 万円`;
         dom.bankAmt.classList.remove('mismatch');
+      }
+
+      // 借入上限チェック（①民間）：超過分は自己資金の増額か事業費の減額で調整する（公庫利用時はリフォーム費用は①に影響しない）
+      const bankCap = parseFloat(dom.bankCap.value);
+      dom.bankCapStatus.hidden = !(bankCap > 0);
+      if (bankCap > 0) {
+        const over = Math.round(bankAmt - bankCap);
+        dom.bankCapStatus.className = 'cap-status ' + (over > 0 ? 'over' : 'ok');
+        dom.bankCapStatus.textContent = over > 0
+          ? `⚠️ 上限を ${over}万円 超過：自己資金の増額、または${hasEq ? '落札取得価格' : '落札取得価格・リフォーム費用'}の減額で、計 ${over}万円 の調整が必要です`
+          : `✓ 上限内（残り枠 ${Math.abs(over)}万円）`;
       }
 
       const pmtBank = calcPmt(bankAmt * 10000, parseFloat(dom.bankRate.value) || 0, bankYrs);
@@ -985,6 +1052,20 @@
 
       const initialRepay = stages.length > 0 ? stages[0].totalRepay : 0;
       dom.kpiRepay.textContent = (initialRepay / 10000).toFixed(1) + ' 万円';
+
+      // ローン定数(K%) = 当初の年間返済額 ÷ 借入総額、イールドギャップ = 実質利回り − K%
+      const totalLoanYen = (bankAmt + eqAmt) * 10000;
+      if (totalLoanYen > 0) {
+        const loanConst = (initialRepay * 12) / totalLoanYen * 100;
+        const yieldGap = netYield - loanConst;
+        dom.kpiLoanConst.textContent = loanConst.toFixed(2) + ' %';
+        dom.kpiYieldGap.textContent = (yieldGap >= 0 ? '+' : '') + yieldGap.toFixed(2) + ' %';
+        dom.kpiYieldGap.style.color = yieldGap >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+      } else {
+        dom.kpiLoanConst.textContent = '-- %';
+        dom.kpiYieldGap.textContent = '-- %';
+        dom.kpiYieldGap.style.color = '';
+      }
 
       if (totalEquity <= 0) {
         dom.kpiPayback.textContent = 'フルローン';
@@ -1115,17 +1196,19 @@
       });
     });
 
-    // リフォームなし：チェックで0円・スライダー無効、外すと直前の金額に戻す
-    let renoBeforeZero = DEFAULT_CONFIG.reno.val;
-    dom.renoZero.addEventListener('change', () => {
-      if (dom.renoZero.checked) {
-        renoBeforeZero = parseFloat(dom.reno.value) || 0;
-        dom.reno.value = 0;
+    // リフォーム融資なし：公庫（設備資金）は使えなくし、外すと直前の公庫の選択に戻す
+    let kokoEqBeforeSelf = dom.kokoEqEnable.checked;
+    dom.renoSelf.addEventListener('change', () => {
+      if (dom.renoSelf.checked) {
+        kokoEqBeforeSelf = dom.kokoEqEnable.checked;
+        dom.kokoEqEnable.checked = false;
       } else {
-        dom.reno.value = renoBeforeZero;
+        dom.kokoEqEnable.checked = kokoEqBeforeSelf;
       }
-      dom.reno.disabled = dom.renoZero.checked;
-      syncLoanAmounts(false);
+      dom.kokoEqEnable.disabled = dom.renoSelf.checked;
+      isBankAmtManuallyEdited = false;
+      isKokoAmtManuallyEdited = false;
+      syncLoanAmounts(true);
       calculate();
     });
 
@@ -1165,7 +1248,7 @@
       calculate();
     });
 
-    [dom.rent, dom.opex, dom.bankRate, dom.bankYrs, dom.kokoEqRate, dom.kokoEqYrs].forEach(el => {
+    [dom.rent, dom.opex, dom.bankCap, dom.bankRate, dom.bankYrs, dom.kokoEqRate, dom.kokoEqYrs].forEach(el => {
       el.addEventListener('input', calculate);
     });
 
