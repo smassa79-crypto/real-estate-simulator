@@ -15,8 +15,15 @@
       price: {
         val: 2200,      // 落札取得価格 初期値 (万円)
         min: 1500,      // 下限 (万円)
-        max: 3000,      // 上限 (万円) 
+        max: 3000,      // 上限 (万円)
         step: 10
+      },
+      deposit: {
+        val: 440,       // 保証金（実質頭金）初期値 (万円)：基準価額の試算・中心ケース2,182万×20%
+        min: 0,
+        max: 800,
+        step: 10,
+        note: '※落札額に充当（基準価額×20%）'   // スライダー下の注記
       },
       reno: {
         val: 600,       // リフォーム費用 初期値 (万円)
@@ -24,6 +31,7 @@
         max: 1500,      // 上限 (万円)
         step: 10
       },
+
       // 自己資金の出どころ（合計が「自己資金合計」になります）
       fundSbi: {
         val: 600,       // SBI証券口座 (万円)
@@ -43,31 +51,38 @@
         max: 300,
         step: 10
       },
-      // 物件頭金＋リフォーム費用 = 自己資金合計 − 諸経費（自動計算）
       equityMisc: {
         val: 150,       // 諸経費 (万円)
         min: 0,
         max: 300,
         step: 10
       },
+      // 手元に残る資金 = 自己資金合計 − 諸経費 − 保証金 −（リフォーム融資なしならリフォーム費用）（自動計算）
+
+      // 収入・経費
       rent: {
         val: 20.0,      // 想定月額賃料 (万円)
         min: 14.0,
         max: 25.0,
-        step: 0.5
+        step: 0.5,
+        note: '下限:17万 / 目標:18.5万 / 法人:20万'   // スライダー下の目安
       },
       opex: {
         val: 20,        // 運営経費率 初期値 (%)
         min: 10,
         max: 30,
-        step: 1
+        step: 1,
+        targetMan: 4,   // 運営経費の目安 (万円/月)：「○万円以上に自動設定」ボタンの基準
+        breakdown: '※想定：管理費：1万円、固都税：1万円、火災地震保険：1万、修繕積立：1万円',
+        note: '実費設計推奨: 20%〜22%'   // スライダー下の目安
       },
 
       // 2. 融資条件
       bank: {
-        amount: 3000,   // ① 民間金融機関 借入額 (万円) 
+        // 借入額は「落札取得価格 − 保証金」で自動計算
         rate: 3.375,    // 金利 (%)
-        years: 15,      // 期間 (年) ※最長15年
+        years: 15,      // 期間 (年)
+        maxYears: 15,   // 期間の上限 (年)
         cap: 1700,      // 借入上限 (万円)：単独担保（競売物件のみ）
         capJoint: 2500, // 借入上限 (万円)：共同担保（競売物件＋マハロ邸）
         joint: false    // マハロ邸を共同担保にする初期状態
@@ -75,9 +90,14 @@
       kokoEq: {
         enabled: true,  // ② 公庫（設備資金）の初期有効/無効（無効＝リフォームは自己資金）
         // 借入額はリフォーム費用と同額で自動設定
-        rate: 4.55,     // 金利 (%) 
-        years: 10       // 期間 (年)
-      }
+        rate: 4.55,     // 金利 (%)
+        years: 10,      // 期間 (年)
+        maxYears: 50    // 期間の上限 (年)
+      },
+      rateStep: 0.001,  // 金利欄の入力刻み (%)
+
+      // 3. 計算設定
+      paybackMaxYears: 50   // 回収年数(CCR)を計算する最長年数
     };
   </script>
 
@@ -416,6 +436,16 @@
           <div class="range-limits"><span id="limit-price-min"></span><span id="limit-price-max"></span></div>
         </div>
 
+        <!-- 保証金（実質頭金） -->
+        <div class="control-group">
+          <div class="control-header">
+            <span>保証金（実質頭金）</span>
+            <span class="control-val" id="disp-deposit"></span>
+          </div>
+          <input type="range" id="param-deposit">
+          <div class="range-limits"><span id="limit-deposit-min"></span><span id="note-deposit"></span><span id="limit-deposit-max"></span></div>
+        </div>
+
         <!-- リフォーム費用 -->
         <div class="control-group">
           <div class="control-header">
@@ -476,11 +506,12 @@
             </div>
             <div class="derived-box" id="equity-down-box">
               <div class="control-header">
-                <span>物件頭金＋リフォーム費用</span>
+                <span>手元に残る資金</span>
                 <span class="control-val" id="disp-equity-down"></span>
               </div>
-              <div class="formula">＝ 自己資金合計 − 諸経費（自動計算）</div>
+              <div class="formula" id="equity-left-formula"></div>
               <div class="formula" id="reno-self-note" hidden></div>
+              <div class="formula alert" id="equity-short-note" hidden></div>
             </div>
           </div>
         </div>
@@ -492,23 +523,23 @@
             <span class="control-val" id="disp-rent"></span>
           </div>
           <input type="range" id="param-rent">
-          <div class="range-limits"><span id="limit-rent-min"></span><span>下限:17万 / 目標:18.5万 / 法人:20万</span><span id="limit-rent-max"></span></div>
+          <div class="range-limits"><span id="limit-rent-min"></span><span id="note-rent"></span><span id="limit-rent-max"></span></div>
         </div>
 
         <!-- 運営経費率 -->
         <div class="control-group" style="margin-bottom: 0;">
           <div class="control-header">
             <span style="display: flex; align-items: baseline; flex-wrap: wrap;">
-              <span>運営経費率（目安4万円）</span>
-              <span class="opex-sub-text">※想定：管理費：1万円、固都税：1万円、火災地震保険：1万、修繕積立：1万円</span>
+              <span>運営経費率（目安<span id="opex-target-label"></span>万円）</span>
+              <span class="opex-sub-text" id="opex-breakdown"></span>
             </span>
             <div style="display: flex; align-items: center; gap: 4px; margin-left: 4px;">
-              <button type="button" class="btn-helper" id="btn-set-opex-40k">4万円以上に自動設定</button>
+              <button type="button" class="btn-helper" id="btn-set-opex-40k"></button>
               <span class="control-val" id="disp-opex"></span>
             </div>
           </div>
           <input type="range" id="param-opex">
-          <div class="range-limits"><span id="limit-opex-min"></span><span>実費設計推奨: 20%〜22%</span><span id="limit-opex-max"></span></div>
+          <div class="range-limits"><span id="limit-opex-min"></span><span id="note-opex"></span><span id="limit-opex-max"></span></div>
         </div>
       </div>
 
@@ -531,11 +562,11 @@
             </div>
             <div class="input-field">
               <label>金利 (%)</label>
-              <input type="number" id="loan-bank-rate" step="0.001" min="0" inputmode="decimal">
+              <input type="number" id="loan-bank-rate" min="0" inputmode="decimal">
             </div>
             <div class="input-field">
-              <label>期間 (年・最長15)</label>
-              <input type="number" id="loan-bank-years" step="1" min="1" max="15" inputmode="numeric">
+              <label>期間 (年・最長<span id="bank-max-years-label"></span>)</label>
+              <input type="number" id="loan-bank-years" step="1" min="1" inputmode="numeric">
             </div>
           </div>
           <div class="cap-row">
@@ -559,11 +590,11 @@
             </div>
             <div class="input-field">
               <label>金利 (%)</label>
-              <input type="number" id="loan-koko-eq-rate" step="0.001" min="0" inputmode="decimal">
+              <input type="number" id="loan-koko-eq-rate" min="0" inputmode="decimal">
             </div>
             <div class="input-field">
               <label>期間 (年)</label>
-              <input type="number" id="loan-koko-eq-years" step="1" min="1" max="50" inputmode="numeric">
+              <input type="number" id="loan-koko-eq-years" step="1" min="1" inputmode="numeric">
             </div>
           </div>
         </div>
@@ -680,6 +711,12 @@
 
     const dom = {
       price: document.getElementById('param-price'),
+      deposit: document.getElementById('param-deposit'),
+      dispDeposit: document.getElementById('disp-deposit'),
+      limitDepositMin: document.getElementById('limit-deposit-min'),
+      limitDepositMax: document.getElementById('limit-deposit-max'),
+      equityLeftFormula: document.getElementById('equity-left-formula'),
+      equityShortNote: document.getElementById('equity-short-note'),
       reno: document.getElementById('param-reno'),
       renoSelf: document.getElementById('reno-self'),
       renoSelfNote: document.getElementById('reno-self-note'),
@@ -767,6 +804,7 @@
       };
 
       setupSlider(dom.price, cfg.price, dom.limitPriceMin, dom.limitPriceMax, '万');
+      setupSlider(dom.deposit, cfg.deposit, dom.limitDepositMin, dom.limitDepositMax, '万');
       setupSlider(dom.reno, cfg.reno, dom.limitRenoMin, dom.limitRenoMax, '万');
       setupSlider(dom.fundSbi, cfg.fundSbi, dom.limitSbiMin, dom.limitSbiMax, '万');
       setupSlider(dom.fundMahalo, cfg.fundMahalo, dom.limitMahaloMin, dom.limitMahaloMax, '万');
@@ -775,9 +813,19 @@
       setupSlider(dom.rent, cfg.rent, dom.limitRentMin, dom.limitRentMax, '万');
       setupSlider(dom.opex, cfg.opex, dom.limitOpexMin, dom.limitOpexMax, '%');
 
-      dom.bankAmt.value = cfg.bank.amount;
       dom.bankRate.value = cfg.bank.rate;
       dom.bankYrs.value = cfg.bank.years;
+      dom.bankYrs.max = cfg.bank.maxYears;
+      document.getElementById('bank-max-years-label').textContent = cfg.bank.maxYears;
+      dom.bankRate.step = cfg.rateStep;
+      dom.kokoEqRate.step = cfg.rateStep;
+
+      document.getElementById('note-deposit').textContent = cfg.deposit.note;
+      document.getElementById('note-rent').textContent = cfg.rent.note;
+      document.getElementById('note-opex').textContent = cfg.opex.note;
+      document.getElementById('opex-breakdown').textContent = cfg.opex.breakdown;
+      document.getElementById('opex-target-label').textContent = cfg.opex.targetMan;
+      dom.btnSetOpex40k.textContent = `${cfg.opex.targetMan}万円以上に自動設定`;
       dom.bankJoint.checked = cfg.bank.joint;
       dom.bankCap.value = cfg.bank.joint ? cfg.bank.capJoint : cfg.bank.cap;
 
@@ -785,6 +833,7 @@
       dom.kokoEqAmt.value = cfg.reno.val;
       dom.kokoEqRate.value = cfg.kokoEq.rate;
       dom.kokoEqYrs.value = cfg.kokoEq.years;
+      dom.kokoEqYrs.max = cfg.kokoEq.maxYears;
     }
 
     applyConfig();
@@ -868,14 +917,20 @@
       calculate();
     });
 
-    // 自己資金合計 = 各口座の合計、物件頭金＋リフォーム費用 = 自己資金合計 − 諸経費
+    // 自己資金合計 = 各口座の合計
+    // 実際に投入する自己資金 = 保証金（実質頭金）＋ 諸経費 ＋（リフォーム融資なしならリフォーム費用）
+    // 手元に残る資金 = 自己資金合計 − 実際に投入する自己資金
     function getEquity() {
       const sbi = parseFloat(dom.fundSbi.value) || 0;
       const mahalo = parseFloat(dom.fundMahalo.value) || 0;
       const mariko = parseFloat(dom.fundMariko.value) || 0;
       const misc = parseFloat(dom.equityMisc.value) || 0;
+      const deposit = parseFloat(dom.deposit.value) || 0;
+      const reno = parseFloat(dom.reno.value) || 0;
+      const renoSelf = dom.renoSelf.checked;
       const total = sbi + mahalo + mariko;
-      return { sbi, mahalo, mariko, misc, total, down: total - misc };
+      const invested = deposit + misc + (renoSelf ? reno : 0);
+      return { sbi, mahalo, mariko, misc, deposit, total, invested, left: total - invested };
     }
 
     let isBankAmtManuallyEdited = false;
@@ -884,7 +939,7 @@
     function syncLoanAmounts(force = false) {
       const p = parseFloat(dom.price.value) || 0;
       const r = parseFloat(dom.reno.value) || 0;
-      const eqDown = Math.max(0, getEquity().down);
+      const deposit = getEquity().deposit;
       const hasEq = dom.kokoEqEnable.checked;
 
       // 公庫（設備資金）が無効の間も、借入額の表示はリフォーム費用に合わせておく
@@ -892,19 +947,13 @@
         dom.kokoEqAmt.value = Math.round(r);
       }
 
-      if (dom.renoSelf.checked) {
-        // リフォーム費用は自己資金から先に充当し、融資は物件購入分のみ
-        if (!isBankAmtManuallyEdited || force) {
-          dom.bankAmt.value = Math.max(0, Math.round(p - Math.max(0, eqDown - r)));
-        }
-      } else {
-        // リフォーム費用は公庫で調達し、民間は物件購入分のみ
-        if (!isKokoAmtManuallyEdited || force) {
-          dom.kokoEqAmt.value = Math.round(r);
-        }
-        if (!isBankAmtManuallyEdited || force) {
-          dom.bankAmt.value = Math.max(0, Math.round(p - eqDown));
-        }
+      // リフォーム費用は公庫で調達（リフォーム融資なしなら自己資金で支払い）
+      if (!dom.renoSelf.checked && (!isKokoAmtManuallyEdited || force)) {
+        dom.kokoEqAmt.value = Math.round(r);
+      }
+      // 民間は物件購入資金のみ：落札取得価格 − 保証金（実質頭金）
+      if (!isBankAmtManuallyEdited || force) {
+        dom.bankAmt.value = Math.max(0, Math.round(p - deposit));
       }
     }
 
@@ -912,7 +961,7 @@
       const price = parseFloat(dom.price.value) || 0;
       const reno  = parseFloat(dom.reno.value) || 0;
       const eq = getEquity();
-      const eqDown = eq.down;
+      const eqLeft = eq.left;
       const eqMisc = eq.misc;
       const totalEquity = eq.total;
 
@@ -924,8 +973,11 @@
       dom.dispFundSbi.textContent = eq.sbi.toLocaleString() + ' 万円';
       dom.dispFundMahalo.textContent = eq.mahalo.toLocaleString() + ' 万円';
       dom.dispFundMariko.textContent = eq.mariko.toLocaleString() + ' 万円';
-      dom.dispEquityDown.textContent = eqDown.toLocaleString() + ' 万円';
-      dom.equityDownBox.classList.toggle('negative', eqDown < 0);
+      dom.dispDeposit.textContent = eq.deposit.toLocaleString() + ' 万円';
+      dom.dispEquityDown.textContent = eqLeft.toLocaleString() + ' 万円';
+      dom.equityDownBox.classList.toggle('negative', eqLeft < 0);
+      dom.equityShortNote.hidden = eqLeft >= 0;
+      dom.equityShortNote.textContent = `⚠️ 自己資金不足：あと${Math.abs(eqLeft).toLocaleString()}万円`;
       dom.dispEquityMisc.textContent = eqMisc.toLocaleString() + ' 万円';
       dom.dispEquityTotal.textContent = totalEquity.toLocaleString();
       dom.dispRent.textContent  = rentMan.toFixed(1) + ' 万円';
@@ -940,14 +992,13 @@
       const renoSelf = dom.renoSelf.checked;
       const hasEq = dom.kokoEqEnable.checked;
 
-      // リフォーム融資なし：自己資金（合計−諸経費）からリフォーム費用を支払い、残りを物件頭金に充当
+      dom.equityLeftFormula.textContent = renoSelf
+        ? '＝ 自己資金合計 − 諸経費 − 保証金 − リフォーム費用'
+        : '＝ 自己資金合計 − 諸経費 − 保証金';
+      // リフォーム融資なし：リフォーム費用も自己資金から支払う
       dom.renoSelfNote.hidden = !renoSelf;
       if (renoSelf) {
-        const renoShort = Math.round(reno - Math.max(0, eqDown));
-        dom.renoSelfNote.classList.toggle('alert', renoShort > 0);
-        dom.renoSelfNote.textContent = renoShort > 0
-          ? `⚠️ 自己資金不足：リフォーム費用に ${renoShort}万円 足りません`
-          : `内訳：リフォーム費用 ${reno.toLocaleString()}万 ＋ 物件頭金 ${Math.round(eqDown - reno).toLocaleString()}万`;
+        dom.renoSelfNote.textContent = `内訳：リフォーム費用 ${reno.toLocaleString()}万 ＋ 保証金 ${eq.deposit.toLocaleString()}万`;
       }
 
       dom.kokoEqContainer.classList.toggle('disabled', !hasEq);
@@ -958,7 +1009,8 @@
       const bankAmt = Math.max(0, parseFloat(dom.bankAmt.value) || 0);
       const eqAmt   = hasEq ? Math.max(0, parseFloat(dom.kokoEqAmt.value) || 0) : 0;
 
-      const totalFunding = totalEquity + bankAmt + eqAmt;
+      // 調達計：実際に投入する自己資金（保証金＋諸経費＋リフォーム自己資金）＋ 借入。手元に残る資金は含めない
+      const totalFunding = eq.invested + bankAmt + eqAmt;
       const fundingDiff = Math.round(totalFunding - totalProject);
 
       dom.balanceIndicator.className = 'balance-indicator';
@@ -982,14 +1034,14 @@
         dom.bankAmt.classList.remove('mismatch');
       }
 
-      // 借入上限チェック（①民間）：超過分は自己資金の増額か事業費の減額で調整する（公庫利用時はリフォーム費用は①に影響しない）
+      // 借入上限チェック（①民間）：民間借入＝落札取得価格−保証金なので、超過分は保証金の増額か落札取得価格の減額で調整する
       const bankCap = parseFloat(dom.bankCap.value);
       dom.bankCapStatus.hidden = !(bankCap > 0);
       if (bankCap > 0) {
         const over = Math.round(bankAmt - bankCap);
         dom.bankCapStatus.className = 'cap-status ' + (over > 0 ? 'over' : 'ok');
         dom.bankCapStatus.textContent = over > 0
-          ? `⚠️ 上限を ${over}万円 超過：自己資金の増額、または${hasEq ? '落札取得価格' : '落札取得価格・リフォーム費用'}の減額で、計 ${over}万円 の調整が必要です`
+          ? `⚠️ 上限を ${over}万円 超過（保証金の増額か落札価格の減額で調整）`
           : `✓ 上限内（残り枠 ${Math.abs(over)}万円）`;
       }
 
@@ -1066,14 +1118,15 @@
         dom.kpiYieldGap.style.color = '';
       }
 
-      if (totalEquity <= 0) {
+      // 回収年数(CCR)の分母は、実際に投入した自己資金
+      if (eq.invested <= 0) {
         dom.kpiPayback.textContent = 'フルローン';
       } else {
-        const targetEquityYen = totalEquity * 10000;
+        const targetEquityYen = eq.invested * 10000;
         let cumulativeCf = 0;
         let paybackYear = null;
 
-        for (let y = 1; y <= 50; y++) {
+        for (let y = 1; y <= DEFAULT_CONFIG.paybackMaxYears; y++) {
           let stageForYear = stages.find(s => y > s.fromYr && y <= s.toYr);
           let annualCfForYear = stageForYear ? (stageForYear.cf * 12) : (noiYen * 12);
 
@@ -1091,7 +1144,7 @@
         if (paybackYear !== null) {
           dom.kpiPayback.textContent = paybackYear.toFixed(1) + ' 年';
         } else {
-          dom.kpiPayback.textContent = '50年超/不可';
+          dom.kpiPayback.textContent = `${DEFAULT_CONFIG.paybackMaxYears}年超/不可`;
         }
       }
 
@@ -1188,7 +1241,7 @@
       cfChart.update('none');
     }
 
-    [dom.price, dom.reno, dom.fundSbi, dom.fundMahalo, dom.fundMariko, dom.equityMisc].forEach(el => {
+    [dom.price, dom.deposit, dom.reno, dom.fundSbi, dom.fundMahalo, dom.fundMariko, dom.equityMisc].forEach(el => {
       el.addEventListener('input', () => {
         syncLoanAmounts(false);
         calculate();
@@ -1237,7 +1290,7 @@
 
       let targetPercent = maxOpexPercent;
       for (let p = Math.ceil(minOpexPercent); p <= maxOpexPercent; p++) {
-        if (Math.round(rentYen * (p / 100)) >= 40000) {
+        if (Math.round(rentYen * (p / 100)) >= DEFAULT_CONFIG.opex.targetMan * 10000) {
           targetPercent = p;
           break;
         }
