@@ -67,11 +67,13 @@
       bank: {
         amount: 3000,   // ① 民間金融機関 借入額 (万円) 
         rate: 3.375,    // 金利 (%)
-        years: 15,      // 期間 (年)
-        cap: 1700       // 借入上限 (万円)
+        years: 15,      // 期間 (年) ※最長15年
+        cap: 1700,      // 借入上限 (万円)：単独担保（競売物件のみ）
+        capJoint: 2500, // 借入上限 (万円)：共同担保（競売物件＋マハロ邸）
+        joint: false    // マハロ邸を共同担保にする初期状態
       },
       kokoEq: {
-        enabled: false, // ② 公庫（設備資金）の初期有効/無効
+        enabled: true,  // ② 公庫（設備資金）の初期有効/無効（無効＝リフォームは自己資金）
         // 借入額はリフォーム費用と同額で自動設定
         rate: 4.55,     // 金利 (%) 
         years: 10       // 期間 (年)
@@ -290,6 +292,8 @@
       font-size: 0.62rem;
     }
     .cap-row label { color: var(--text-muted); white-space: nowrap; }
+    .cap-row .joint-toggle { display: inline-flex; align-items: center; gap: 3px; color: var(--primary); font-weight: 600; cursor: pointer; }
+    .cap-row .joint-toggle input { width: 12px; height: 12px; padding: 0; cursor: pointer; accent-color: var(--primary); }
     .cap-row input { width: 70px; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.74rem; }
     .cap-status { font-weight: 700; padding: 1px 6px; border-radius: 3px; }
     .cap-status.ok { color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; }
@@ -517,7 +521,7 @@
         <!-- 民間金融機関 -->
         <div class="sub-section-title">
           <input type="checkbox" id="loan-bank-enable" checked disabled>
-          <label for="loan-bank-enable" id="label-bank-title" style="cursor: default;">① 民間金融機関（物件購入資金、設備資金）</label>
+          <label for="loan-bank-enable" id="label-bank-title" style="cursor: default;">① 民間金融機関（物件購入資金のみ）</label>
         </div>
         <div class="loan-inputs-container" id="bank-container">
           <div class="inline-inputs">
@@ -530,11 +534,12 @@
               <input type="number" id="loan-bank-rate" step="0.1" min="0" inputmode="decimal">
             </div>
             <div class="input-field">
-              <label>期間 (年)</label>
-              <input type="number" id="loan-bank-years" step="1" min="1" max="50" inputmode="numeric">
+              <label>期間 (年・最長15)</label>
+              <input type="number" id="loan-bank-years" step="1" min="1" max="15" inputmode="numeric">
             </div>
           </div>
           <div class="cap-row">
+            <label class="joint-toggle"><input type="checkbox" id="loan-bank-joint">マハロ邸を共同担保</label>
             <label for="loan-bank-cap">借入上限 (万)</label>
             <input type="number" id="loan-bank-cap" step="10" min="0" inputmode="numeric">
             <span class="cap-status" id="bank-cap-status"></span>
@@ -720,12 +725,12 @@
       balanceDiffText: document.getElementById('balance-diff-text'),
 
       bankEnable: document.getElementById('loan-bank-enable'),
-      bankTitleLabel: document.getElementById('label-bank-title'),
       bankContainer: document.getElementById('bank-container'),
       bankAmt: document.getElementById('loan-bank-amount'),
       bankRate: document.getElementById('loan-bank-rate'),
       bankYrs: document.getElementById('loan-bank-years'),
       bankCap: document.getElementById('loan-bank-cap'),
+      bankJoint: document.getElementById('loan-bank-joint'),
       bankCapStatus: document.getElementById('bank-cap-status'),
 
       kokoEqEnable: document.getElementById('loan-koko-eq-enable'),
@@ -773,7 +778,8 @@
       dom.bankAmt.value = cfg.bank.amount;
       dom.bankRate.value = cfg.bank.rate;
       dom.bankYrs.value = cfg.bank.years;
-      dom.bankCap.value = cfg.bank.cap;
+      dom.bankJoint.checked = cfg.bank.joint;
+      dom.bankCap.value = cfg.bank.joint ? cfg.bank.capJoint : cfg.bank.cap;
 
       dom.kokoEqEnable.checked = cfg.kokoEq.enabled;
       dom.kokoEqAmt.value = cfg.reno.val;
@@ -891,16 +897,13 @@
         if (!isBankAmtManuallyEdited || force) {
           dom.bankAmt.value = Math.max(0, Math.round(p - Math.max(0, eqDown - r)));
         }
-      } else if (hasEq) {
+      } else {
+        // リフォーム費用は公庫で調達し、民間は物件購入分のみ
         if (!isKokoAmtManuallyEdited || force) {
           dom.kokoEqAmt.value = Math.round(r);
         }
         if (!isBankAmtManuallyEdited || force) {
           dom.bankAmt.value = Math.max(0, Math.round(p - eqDown));
-        }
-      } else {
-        if (!isBankAmtManuallyEdited || force) {
-          dom.bankAmt.value = Math.max(0, Math.round((p + r) - eqDown));
         }
       }
     }
@@ -947,10 +950,6 @@
           : `内訳：リフォーム費用 ${reno.toLocaleString()}万 ＋ 物件頭金 ${Math.round(eqDown - reno).toLocaleString()}万`;
       }
 
-      const bankLabelText = (hasEq || renoSelf) 
-        ? '① 民間金融機関（物件購入資金）' 
-        : '① 民間金融機関（物件購入資金、設備資金）';
-      dom.bankTitleLabel.textContent = bankLabelText;
       dom.kokoEqContainer.classList.toggle('disabled', !hasEq);
 
       const bankYrs = Math.max(1, parseFloat(dom.bankYrs.value) || 1);
@@ -1196,26 +1195,26 @@
       });
     });
 
-    // リフォーム融資なし：公庫（設備資金）は使えなくし、外すと直前の公庫の選択に戻す
-    let kokoEqBeforeSelf = dom.kokoEqEnable.checked;
-    dom.renoSelf.addEventListener('change', () => {
-      if (dom.renoSelf.checked) {
-        kokoEqBeforeSelf = dom.kokoEqEnable.checked;
-        dom.kokoEqEnable.checked = false;
+    // 民間はリフォーム費用を融資できないため、リフォームは「②公庫」か「自己資金（リフォーム融資なし）」のどちらか。
+    // 2つのチェックは常に逆の状態に連動させる
+    const onRenoFundingChange = (source) => {
+      if (source === dom.renoSelf) {
+        dom.kokoEqEnable.checked = !dom.renoSelf.checked;
       } else {
-        dom.kokoEqEnable.checked = kokoEqBeforeSelf;
+        dom.renoSelf.checked = !dom.kokoEqEnable.checked;
       }
-      dom.kokoEqEnable.disabled = dom.renoSelf.checked;
       isBankAmtManuallyEdited = false;
       isKokoAmtManuallyEdited = false;
       syncLoanAmounts(true);
       calculate();
-    });
+    };
+    dom.renoSelf.addEventListener('change', () => onRenoFundingChange(dom.renoSelf));
+    dom.kokoEqEnable.addEventListener('change', () => onRenoFundingChange(dom.kokoEqEnable));
+    dom.renoSelf.checked = !dom.kokoEqEnable.checked;
 
-    dom.kokoEqEnable.addEventListener('change', () => {
-      isBankAmtManuallyEdited = false;
-      isKokoAmtManuallyEdited = false;
-      syncLoanAmounts(true);
+    // マハロ邸を共同担保：借入上限を単独担保／共同担保の目安に切り替え
+    dom.bankJoint.addEventListener('change', () => {
+      dom.bankCap.value = dom.bankJoint.checked ? DEFAULT_CONFIG.bank.capJoint : DEFAULT_CONFIG.bank.cap;
       calculate();
     });
 
