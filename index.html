@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>不動産投資採算・収支CFシミュレーター</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- ========================================== -->
   <!-- ⚙️ 設定パラメータ（ここを変更すれば全体に自動反映されます） -->
@@ -97,7 +97,27 @@
       rateStep: 0.001,  // 金利欄の入力刻み (%)
 
       // 3. 計算設定
-      paybackMaxYears: 50   // 回収年数(CCR)を計算する最長年数
+      paybackMaxYears: 50,  // 回収年数(CCR)を計算する最長年数
+
+      // 4. 感度分析（公庫の返済中＝1〜公庫期間の年目の月額CF）
+      sensitivity: {
+        rentStep: 1.0,      // 賃料の刻み (万円)
+        rentSteps: 5,       // 現在の賃料の前後に並べる段数（スライダーの下限・上限の範囲内）
+        rates: [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],  // 民間金利の列 (%)。現在値は自動で追加
+        years: [8, 10, 12, 15],                      // 民間期間の列 (年)。現在値は自動で追加
+        maxSolveRate: 20    // 許容金利を逆算するときの上限 (%)
+      },
+
+      // 5. 金利上昇シナリオ（民間のみ。公庫は全期間固定）
+      rateScenario: {
+        mode: 'step',       // 'step'：◯年目から+X% / 'annual'：毎年+X%（上限あり）
+        stepStartYear: 3,   // ◯年目から
+        stepRise: 1.0,      // 上昇幅 (%)
+        annualStartYear: 2, // 上昇を始める年目
+        annualRise: 0.25,   // 毎年の上昇幅 (%)
+        annualCap: 2.0,     // 上昇幅の累計上限 (%)
+        riseStep: 0.05      // 入力刻み (%)
+      }
     };
   </script>
 
@@ -394,7 +414,41 @@
       margin-top: 3px;
     }
 
-    @media (max-width: 850px) { 
+    [hidden] { display: none !important; }
+
+    .analysis-card { margin-top: 6px; margin-bottom: 0; }
+    .card-note { font-size: 0.58rem; color: var(--text-muted); margin-top: 3px; }
+
+    .sens-solve-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 2px 6px;
+      font-size: 0.66rem;
+      margin-bottom: 2px;
+    }
+    .sens-solve-row b { font-size: 0.74rem; }
+    .sens-solve-row b.ok { color: var(--accent-green); }
+    .sens-solve-row b.ng { color: var(--accent-red); }
+    .sens-solve-row .muted { color: var(--text-muted); }
+    .sens-table th, .sens-table td { text-align: center; }
+    .sens-table td.sens-pos { background: #ecfdf5; color: #065f46; }
+    .sens-table td.sens-neg { background: #fef2f2; color: #991b1b; }
+    .sens-table td.sens-current { outline: 2px solid var(--primary); outline-offset: -2px; font-weight: 700; }
+    .sens-table .sens-current-axis { color: var(--primary); font-weight: 700; }
+
+    .scenario-modes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px 12px;
+      font-size: 0.68rem;
+      margin-bottom: 4px;
+    }
+    .scenario-modes label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+    .scenario-modes input { accent-color: var(--primary); }
+    .chart-wrapper.scenario-chart { height: 150px; }
+
+    @media (max-width: 850px) {
       .grid-layout { grid-template-columns: 1fr; } 
       body { height: auto; padding: 6px 8px; } 
     }
@@ -668,6 +722,78 @@
           <canvas id="cfChart"></canvas>
         </div>
       </div>
+
+      <!-- 感度分析 -->
+      <div class="card analysis-card">
+        <h2>🔍 感度分析 <span class="method-badge" id="sens-period-badge"></span></h2>
+        <div id="sens-solve"></div>
+        <div class="chart-header">
+          <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">2軸表</span>
+          <div class="chart-toggle-group">
+            <button type="button" class="chart-btn active" id="btn-sens-rate">賃料×民間金利</button>
+            <button type="button" class="chart-btn" id="btn-sens-years">賃料×民間期間</button>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="breakdown-table sens-table">
+            <thead id="sens-head"></thead>
+            <tbody id="sens-body"></tbody>
+          </table>
+        </div>
+        <div class="card-note">※公庫の返済中で最も低い月額CF。その他の条件は現在の入力値。太枠が現在の入力値</div>
+      </div>
+
+      <!-- 金利上昇シナリオ -->
+      <div class="card analysis-card">
+        <h2>📈 金利上昇シナリオ <span class="method-badge">民間のみ・公庫は固定</span></h2>
+        <div class="scenario-modes">
+          <label><input type="radio" name="sc-mode" id="sc-mode-step">◯年目から上昇</label>
+          <label><input type="radio" name="sc-mode" id="sc-mode-annual">毎年上昇（上限あり）</label>
+        </div>
+        <div class="inline-inputs" id="sc-step-inputs">
+          <div class="input-field">
+            <label>開始 (年目)</label>
+            <input type="number" id="sc-step-start" step="1" min="1" inputmode="numeric">
+          </div>
+          <div class="input-field">
+            <label>上昇幅 (+%)</label>
+            <input type="number" id="sc-step-rise" inputmode="decimal">
+          </div>
+        </div>
+        <div class="inline-inputs" id="sc-annual-inputs" hidden>
+          <div class="input-field">
+            <label>開始 (年目)</label>
+            <input type="number" id="sc-annual-start" step="1" min="1" inputmode="numeric">
+          </div>
+          <div class="input-field">
+            <label>毎年の上昇幅 (+%)</label>
+            <input type="number" id="sc-annual-rise" inputmode="decimal">
+          </div>
+          <div class="input-field">
+            <label>上昇幅の上限 (+%)</label>
+            <input type="number" id="sc-annual-cap" min="0" inputmode="decimal">
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="breakdown-table">
+            <thead id="sc-summary-head"></thead>
+            <tbody id="sc-summary-body"></tbody>
+          </table>
+        </div>
+        <div class="chart-header">
+          <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">📈 年ごとの比較</span>
+          <div class="chart-toggle-group" id="sc-metric-group">
+            <button type="button" class="chart-btn" data-metric="repay">返済額</button>
+            <button type="button" class="chart-btn active" data-metric="cf">CF</button>
+            <button type="button" class="chart-btn" data-metric="cumCf">累積CF</button>
+            <button type="button" class="chart-btn" data-metric="balance">残債</button>
+          </div>
+        </div>
+        <div class="chart-wrapper scenario-chart">
+          <canvas id="scChart"></canvas>
+        </div>
+        <div class="card-note">※金利が変わった年は、その時点の残高・残期間で返済額を再計算（5年ルール・125%ルールは考慮しない）</div>
+      </div>
     </div>
   </div>
 
@@ -683,30 +809,180 @@
       return principalYen * (r * factor) / (factor - 1);
     }
 
-    function calcBalanceSchedule(principalMan, annualRatePercent, years, maxYears) {
-      const schedule = [principalMan];
-      if (principalMan <= 0 || years <= 0) {
-        for (let y = 1; y <= maxYears; y++) schedule.push(0);
-        return schedule;
-      }
-      const r = (parseFloat(annualRatePercent) || 0) / 100 / 12;
+    // 元利均等返済を月次で計算し、年ごとの {金利, 年間返済額(円), 年末残債(円)} を返す。
+    // rateForYear(y) で年ごとに金利を変えられる。金利が変わった年は、その時点の残高・残期間で返済額を再計算する
+    function simulateLoan(principalMan, rateForYear, years, horizon) {
+      const rows = [];
       const n = Math.round(years * 12);
-      const pmtYen = calcPmt(principalMan * 10000, annualRatePercent, years);
-
-      let balance = principalMan * 10000;
-      for (let m = 1; m <= maxYears * 12; m++) {
-        if (m <= n && balance > 0) {
+      let balance = Math.max(0, principalMan) * 10000;
+      let pmtYen = 0;
+      let currentRate = null;
+      for (let y = 1; y <= horizon; y++) {
+        const yearRate = parseFloat(rateForYear(y)) || 0;
+        const r = yearRate / 100 / 12;
+        let payment = 0;
+        for (let m = (y - 1) * 12 + 1; m <= y * 12; m++) {
+          if (m > n || balance <= 0) {
+            balance = 0;
+            continue;
+          }
+          if (yearRate !== currentRate) {
+            pmtYen = calcPmt(balance, yearRate, (n - m + 1) / 12);
+            currentRate = yearRate;
+          }
           const interest = balance * r;
           const principal = Math.min(balance, pmtYen - interest);
           balance = Math.max(0, balance - principal);
-        } else {
-          balance = 0;
+          payment += principal + interest;
         }
-        if (m % 12 === 0) {
-          schedule.push(Math.round(balance / 10000));
+        rows.push({ rate: yearRate, payment, balance });
+      }
+      return rows;
+    }
+
+    function calcBalanceSchedule(principalMan, annualRatePercent, years, maxYears) {
+      const rows = simulateLoan(principalMan, () => annualRatePercent, years, maxYears);
+      return [principalMan, ...rows.map(row => Math.round(row.balance / 10000))];
+    }
+
+    function calcNoi(inp) {
+      const rentYen = inp.rentMan * 10000;
+      const opexYen = Math.round(rentYen * inp.opexRate);
+      return { rentYen, opexYen, noiYen: rentYen - opexYen };
+    }
+
+    // 返済が終わるたびに期間を区切り、期間ごとの月額返済額とCFを求める
+    function calcStages(inp) {
+      const { noiYen } = calcNoi(inp);
+      const { bankYrs, eqYrs, hasEq } = inp;
+      const pmtBank = calcPmt(inp.bankAmt * 10000, inp.bankRate, bankYrs);
+      const pmtEq   = hasEq ? calcPmt(inp.eqAmt * 10000, inp.eqRate, eqYrs) : 0;
+
+      const activeYears = [bankYrs];
+      if (hasEq && eqYrs > 0) activeYears.push(eqYrs);
+      const breakpoints = Array.from(new Set(activeYears)).sort((a, b) => a - b);
+
+      const stages = [];
+      let prevYr = 0;
+      breakpoints.forEach((yr) => {
+        const isBankActive = yr <= bankYrs;
+        const isEqActive   = hasEq && (yr <= eqYrs);
+
+        let periodLabel = '';
+        if (breakpoints.length === 1) {
+          periodLabel = `${yr}年間`;
+        } else {
+          periodLabel = prevYr === 0 ? `当初${yr}年間` : `${prevYr + 1}〜${yr}年目`;
+        }
+
+        const activeBadges = [];
+        if (isBankActive) activeBadges.push('①');
+        if (isEqActive)   activeBadges.push('②');
+
+        const badgeHtml = activeBadges.length > 0
+          ? `<span class="loan-badge">${activeBadges.join('')}</span>`
+          : '';
+
+        const stageRepayBank = isBankActive ? pmtBank : 0;
+        const stageRepayEq   = isEqActive   ? pmtEq   : 0;
+        const totalRepay     = stageRepayBank + stageRepayEq;
+        const cf             = noiYen - totalRepay;
+
+        stages.push({
+          fromYr: prevYr,
+          toYr: yr,
+          yearsCount: yr - prevYr,
+          label: `${periodLabel}${badgeHtml}`,
+          chartLabel: `${periodLabel}${activeBadges.length > 0 ? ' (' + activeBadges.join('') + ')' : ''}`,
+          repayBank: stageRepayBank,
+          repayEq: stageRepayEq,
+          totalRepay: totalRepay,
+          cf: cf
+        });
+
+        prevYr = yr;
+      });
+      return stages;
+    }
+
+    // 年間CFを積み上げ、投入した自己資金を回収できる年数（端数あり）を返す。回収できなければ null
+    function calcPaybackYears(investedYen, annualCfForYear) {
+      let cumulativeCf = 0;
+      for (let y = 1; y <= DEFAULT_CONFIG.paybackMaxYears; y++) {
+        const annualCf = annualCfForYear(y);
+        const prevCumulative = cumulativeCf;
+        cumulativeCf += annualCf;
+        if (prevCumulative < investedYen && cumulativeCf >= investedYen) {
+          const fraction = annualCf > 1 ? Math.max(0, Math.min(1, (investedYen - prevCumulative) / annualCf)) : 0;
+          return (y - 1) + fraction;
         }
       }
-      return schedule;
+      return null;
+    }
+
+    // 感度分析の対象期間：公庫の返済中（公庫なしなら民間の返済中）
+    function sensPeriodYears(inp) {
+      return inp.hasEq ? inp.eqYrs : inp.bankYrs;
+    }
+
+    function stagesInSensPeriod(inp) {
+      const n = sensPeriodYears(inp);
+      return calcStages(inp).filter(s => s.fromYr < n);
+    }
+
+    function minCfInSensPeriod(inp) {
+      return Math.min(...stagesInSensPeriod(inp).map(s => s.cf));
+    }
+
+    // 対象期間を黒字にするのに必要な賃料（円、千円単位で切り上げ）：賃料 × (1 − 経費率) ≥ 月額返済額
+    function solveRequiredRent(inp) {
+      if (inp.opexRate >= 1) return null;
+      const maxRepay = Math.max(...stagesInSensPeriod(inp).map(s => s.totalRepay));
+      return Math.ceil(maxRepay / (1 - inp.opexRate) / 1000) * 1000;
+    }
+
+    // 対象期間を黒字に保てる民間金利の上限（二分法）：民間の返済額 ≤ NOI − 公庫の返済額
+    function solveMaxBankRate(inp) {
+      if (inp.bankAmt <= 0) return { status: 'noLoan' };
+      const room = calcNoi(inp).noiYen - (inp.hasEq ? calcPmt(inp.eqAmt * 10000, inp.eqRate, inp.eqYrs) : 0);
+      const pmtAt = (rate) => calcPmt(inp.bankAmt * 10000, rate, inp.bankYrs);
+      const upper = DEFAULT_CONFIG.sensitivity.maxSolveRate;
+      if (pmtAt(0) > room) return { status: 'none' };
+      if (pmtAt(upper) <= room) return { status: 'above', rate: upper };
+      let lo = 0;
+      let hi = upper;
+      while (hi - lo > 0.0001) {
+        const mid = (lo + hi) / 2;
+        if (pmtAt(mid) <= room) lo = mid; else hi = mid;
+      }
+      return { status: 'ok', rate: Math.floor(lo * 1000) / 1000 };
+    }
+
+    // 金利上昇シナリオの民間金利（年ごと）。公庫は全期間固定なので対象外
+    function scenarioRateForYear(baseRate, sc) {
+      return (y) => {
+        let rise = 0;
+        if (sc.mode === 'step') {
+          if (y >= sc.stepStartYear) rise = sc.stepRise;
+        } else if (y >= sc.annualStartYear) {
+          rise = Math.min((y - sc.annualStartYear + 1) * sc.annualRise, sc.annualCap);
+        }
+        return Math.max(0, Math.round((baseRate + rise) * 1e6) / 1e6);
+      };
+    }
+
+    // 年ごとの返済額・CF・累積CF・残債（民間＋公庫）
+    function simulateYears(inp, bankRateForYear, horizon) {
+      const { noiYen } = calcNoi(inp);
+      const bank = simulateLoan(inp.bankAmt, bankRateForYear, inp.bankYrs, horizon);
+      const koko = inp.hasEq ? simulateLoan(inp.eqAmt, () => inp.eqRate, inp.eqYrs, horizon) : null;
+      let cumCf = 0;
+      return bank.map((b, i) => {
+        const repay = b.payment + (koko ? koko[i].payment : 0);
+        const cf = noiYen * 12 - repay;
+        cumCf += cf;
+        return { year: i + 1, rate: b.rate, repay, cf, cumCf, balance: b.balance + (koko ? koko[i].balance : 0) };
+      });
     }
 
     const dom = {
@@ -788,8 +1064,55 @@
       btnChartDebt: document.getElementById('btn-chart-debt'),
 
       tableHeadRow: document.getElementById('table-head-row'),
-      tableBody: document.getElementById('table-body')
+      tableBody: document.getElementById('table-body'),
+
+      sensPeriodBadge: document.getElementById('sens-period-badge'),
+      sensSolve: document.getElementById('sens-solve'),
+      btnSensRate: document.getElementById('btn-sens-rate'),
+      btnSensYears: document.getElementById('btn-sens-years'),
+      sensHead: document.getElementById('sens-head'),
+      sensBody: document.getElementById('sens-body'),
+
+      scModeStep: document.getElementById('sc-mode-step'),
+      scModeAnnual: document.getElementById('sc-mode-annual'),
+      scStepInputs: document.getElementById('sc-step-inputs'),
+      scAnnualInputs: document.getElementById('sc-annual-inputs'),
+      scStepStart: document.getElementById('sc-step-start'),
+      scStepRise: document.getElementById('sc-step-rise'),
+      scAnnualStart: document.getElementById('sc-annual-start'),
+      scAnnualRise: document.getElementById('sc-annual-rise'),
+      scAnnualCap: document.getElementById('sc-annual-cap'),
+      scSummaryHead: document.getElementById('sc-summary-head'),
+      scSummaryBody: document.getElementById('sc-summary-body'),
+      scMetricGroup: document.getElementById('sc-metric-group')
     };
+
+    // 収支計算に使う入力値（感度分析・金利上昇シナリオでは一部を差し替えて再計算する）
+    function readInputs() {
+      const hasEq = dom.kokoEqEnable.checked;
+      return {
+        rentMan: parseFloat(dom.rent.value) || 0,
+        opexRate: (parseFloat(dom.opex.value) || 0) / 100,
+        bankAmt: Math.max(0, parseFloat(dom.bankAmt.value) || 0),
+        bankRate: parseFloat(dom.bankRate.value) || 0,
+        bankYrs: Math.max(1, parseFloat(dom.bankYrs.value) || 1),
+        hasEq,
+        eqAmt: hasEq ? Math.max(0, parseFloat(dom.kokoEqAmt.value) || 0) : 0,
+        eqRate: parseFloat(dom.kokoEqRate.value) || 0,
+        eqYrs: hasEq ? Math.max(1, parseFloat(dom.kokoEqYrs.value) || 1) : 0
+      };
+    }
+
+    function readScenario() {
+      return {
+        mode: dom.scModeAnnual.checked ? 'annual' : 'step',
+        stepStartYear: Math.max(1, parseInt(dom.scStepStart.value, 10) || 1),
+        stepRise: parseFloat(dom.scStepRise.value) || 0,
+        annualStartYear: Math.max(1, parseInt(dom.scAnnualStart.value, 10) || 1),
+        annualRise: parseFloat(dom.scAnnualRise.value) || 0,
+        annualCap: parseFloat(dom.scAnnualCap.value) || 0
+      };
+    }
 
     function applyConfig() {
       const cfg = DEFAULT_CONFIG;
@@ -834,6 +1157,16 @@
       dom.kokoEqRate.value = cfg.kokoEq.rate;
       dom.kokoEqYrs.value = cfg.kokoEq.years;
       dom.kokoEqYrs.max = cfg.kokoEq.maxYears;
+
+      const sc = cfg.rateScenario;
+      dom.scModeStep.checked = sc.mode !== 'annual';
+      dom.scModeAnnual.checked = sc.mode === 'annual';
+      dom.scStepStart.value = sc.stepStartYear;
+      dom.scStepRise.value = sc.stepRise;
+      dom.scAnnualStart.value = sc.annualStartYear;
+      dom.scAnnualRise.value = sc.annualRise;
+      dom.scAnnualCap.value = sc.annualCap;
+      [dom.scStepRise, dom.scAnnualRise, dom.scAnnualCap].forEach(el => { el.step = sc.riseStep; });
     }
 
     applyConfig();
@@ -965,8 +1298,8 @@
       const eqMisc = eq.misc;
       const totalEquity = eq.total;
 
-      const rentMan = parseFloat(dom.rent.value) || 0;
-      const opexRate = (parseFloat(dom.opex.value) || 0) / 100;
+      const inp = readInputs();
+      const { rentMan, opexRate, bankAmt, bankYrs, hasEq, eqAmt, eqYrs } = inp;
 
       dom.dispPrice.textContent = price.toLocaleString() + ' 万円';
       dom.dispReno.textContent  = reno.toLocaleString() + ' 万円';
@@ -985,12 +1318,9 @@
 
       const totalProject = price + reno + eqMisc;
 
-      const rentYen = rentMan * 10000;
-      const opexYen = Math.round(rentYen * opexRate);
-      const noiYen  = rentYen - opexYen;
+      const { rentYen, opexYen, noiYen } = calcNoi(inp);
 
       const renoSelf = dom.renoSelf.checked;
-      const hasEq = dom.kokoEqEnable.checked;
 
       dom.equityLeftFormula.textContent = renoSelf
         ? '＝ 自己資金合計 − 諸経費 − 保証金 − リフォーム費用'
@@ -1002,12 +1332,6 @@
       }
 
       dom.kokoEqContainer.classList.toggle('disabled', !hasEq);
-
-      const bankYrs = Math.max(1, parseFloat(dom.bankYrs.value) || 1);
-      const eqYrs   = hasEq ? Math.max(1, parseFloat(dom.kokoEqYrs.value) || 1) : 0;
-
-      const bankAmt = Math.max(0, parseFloat(dom.bankAmt.value) || 0);
-      const eqAmt   = hasEq ? Math.max(0, parseFloat(dom.kokoEqAmt.value) || 0) : 0;
 
       // 調達計：実際に投入する自己資金（保証金＋諸経費＋リフォーム自己資金）＋ 借入。手元に残る資金は含めない
       const totalFunding = eq.invested + bankAmt + eqAmt;
@@ -1045,53 +1369,7 @@
           : `✓ 上限内（残り枠 ${Math.abs(over)}万円）`;
       }
 
-      const pmtBank = calcPmt(bankAmt * 10000, parseFloat(dom.bankRate.value) || 0, bankYrs);
-      const pmtEq   = hasEq ? calcPmt(eqAmt * 10000, parseFloat(dom.kokoEqRate.value) || 0, eqYrs) : 0;
-
-      const activeYears = [bankYrs];
-      if (hasEq && eqYrs > 0) activeYears.push(eqYrs);
-      const breakpoints = Array.from(new Set(activeYears)).sort((a, b) => a - b);
-
-      const stages = [];
-      let prevYr = 0;
-      breakpoints.forEach((yr) => {
-        const isBankActive = yr <= bankYrs;
-        const isEqActive   = hasEq && (yr <= eqYrs);
-
-        let periodLabel = '';
-        if (breakpoints.length === 1) {
-          periodLabel = `${yr}年間`;
-        } else {
-          periodLabel = prevYr === 0 ? `当初${yr}年間` : `${prevYr + 1}〜${yr}年目`;
-        }
-
-        const activeBadges = [];
-        if (isBankActive) activeBadges.push('①');
-        if (isEqActive)   activeBadges.push('②');
-        
-        const badgeHtml = activeBadges.length > 0 
-          ? `<span class="loan-badge">${activeBadges.join('')}</span>` 
-          : '';
-
-        const stageRepayBank = isBankActive ? pmtBank : 0;
-        const stageRepayEq   = isEqActive   ? pmtEq   : 0;
-        const totalRepay     = stageRepayBank + stageRepayEq;
-        const cf             = noiYen - totalRepay;
-
-        stages.push({
-          fromYr: prevYr,
-          toYr: yr,
-          yearsCount: yr - prevYr,
-          label: `${periodLabel}${badgeHtml}`,
-          chartLabel: `${periodLabel}${activeBadges.length > 0 ? ' (' + activeBadges.join('') + ')' : ''}`,
-          repayBank: stageRepayBank,
-          repayEq: stageRepayEq,
-          totalRepay: totalRepay,
-          cf: cf
-        });
-
-        prevYr = yr;
-      });
+      const stages = calcStages(inp);
 
       dom.kpiTotal.textContent = Math.round(totalProject).toLocaleString() + ' 万円';
       
@@ -1122,24 +1400,10 @@
       if (eq.invested <= 0) {
         dom.kpiPayback.textContent = 'フルローン';
       } else {
-        const targetEquityYen = eq.invested * 10000;
-        let cumulativeCf = 0;
-        let paybackYear = null;
-
-        for (let y = 1; y <= DEFAULT_CONFIG.paybackMaxYears; y++) {
-          let stageForYear = stages.find(s => y > s.fromYr && y <= s.toYr);
-          let annualCfForYear = stageForYear ? (stageForYear.cf * 12) : (noiYen * 12);
-
-          const prevCumulative = cumulativeCf;
-          cumulativeCf += annualCfForYear;
-
-          if (prevCumulative < targetEquityYen && cumulativeCf >= targetEquityYen && paybackYear === null) {
-            const neededInThisYear = targetEquityYen - prevCumulative;
-            const fraction = annualCfForYear > 1 ? Math.max(0, Math.min(1, neededInThisYear / annualCfForYear)) : 0;
-            paybackYear = (y - 1) + fraction;
-            break;
-          }
-        }
+        const paybackYear = calcPaybackYears(eq.invested * 10000, (y) => {
+          const stageForYear = stages.find(s => y > s.fromYr && y <= s.toYr);
+          return stageForYear ? (stageForYear.cf * 12) : (noiYen * 12);
+        });
 
         if (paybackYear !== null) {
           dom.kpiPayback.textContent = paybackYear.toFixed(1) + ' 年';
@@ -1239,6 +1503,183 @@
         cfChart.data.datasets = lineDatasets;
       }
       cfChart.update('none');
+
+      renderSensitivity(inp);
+      renderScenario(inp, eq.invested);
+    }
+
+    const fmtCfShort = (val) => (val >= 0 ? '+' : '') + Math.round(val).toLocaleString();
+    const fmtRate = (val) => (Math.round(val * 10) === val * 10 ? val.toFixed(1) : String(val)) + '%';
+    const uniqSorted = (vals) => Array.from(new Set(vals.map(v => Math.round(v * 1000) / 1000))).sort((a, b) => a - b);
+    const isSame = (a, b) => Math.abs(a - b) < 1e-6;
+
+    // 感度分析：賃料 × 民間金利／民間期間 の2軸で、対象期間の最低月額CFを表にする
+    let sensMode = 'rate';
+    function renderSensitivity(inp) {
+      const cfg = DEFAULT_CONFIG.sensitivity;
+      const n = sensPeriodYears(inp);
+      dom.sensPeriodBadge.textContent = `1〜${n}年目の月額CF（円）`;
+
+      // 逆算：必要賃料・許容できる民間金利の上限
+      const reqRentYen = solveRequiredRent(inp);
+      const maxRate = solveMaxBankRate(inp);
+      const rentOk = reqRentYen !== null && inp.rentMan * 10000 >= reqRentYen;
+      const rentText = reqRentYen === null ? '算出不可' : `${(reqRentYen / 10000).toFixed(1)}万円以上`;
+      let rateText;
+      let rateOk = false;
+      if (maxRate.status === 'noLoan') {
+        rateText = '民間借入なし';
+        rateOk = true;
+      } else if (maxRate.status === 'none') {
+        rateText = '金利0%でも赤字';
+      } else if (maxRate.status === 'above') {
+        rateText = `${maxRate.rate}%超でも黒字`;
+        rateOk = true;
+      } else {
+        rateText = `${maxRate.rate.toFixed(3)}%以下`;
+        rateOk = inp.bankRate <= maxRate.rate;
+      }
+      dom.sensSolve.innerHTML =
+        `<div class="sens-solve-row"><span>1〜${n}年目を黒字にする賃料</span>` +
+        `<b class="${rentOk ? 'ok' : 'ng'}">${rentText}</b><span class="muted">（現在 ${inp.rentMan.toFixed(1)}万円）</span></div>` +
+        `<div class="sens-solve-row"><span>許容できる民間金利の上限</span>` +
+        `<b class="${rateOk ? 'ok' : 'ng'}">${rateText}</b><span class="muted">（現在 ${fmtRate(inp.bankRate)}）</span></div>`;
+
+      const rentMin = parseFloat(dom.rent.min);
+      const rentMax = parseFloat(dom.rent.max);
+      const rents = [];
+      for (let k = -cfg.rentSteps; k <= cfg.rentSteps; k++) {
+        const rent = inp.rentMan + k * cfg.rentStep;
+        if (rent >= rentMin - 1e-9 && rent <= rentMax + 1e-9) rents.push(rent);
+      }
+      const rows = uniqSorted(rents);
+
+      const isRate = sensMode === 'rate';
+      const colKey = isRate ? 'bankRate' : 'bankYrs';
+      const cols = isRate
+        ? uniqSorted([...cfg.rates, inp.bankRate])
+        : uniqSorted([...cfg.years.filter(y => y <= DEFAULT_CONFIG.bank.maxYears), inp.bankYrs]);
+      const fmtCol = isRate ? fmtRate : (v) => `${v}年`;
+
+      dom.sensHead.innerHTML = `<tr><th>賃料＼民間${isRate ? '金利' : '期間'}</th>` +
+        cols.map(c => `<th class="${isSame(c, inp[colKey]) ? 'sens-current-axis' : ''}">${fmtCol(c)}</th>`).join('') + '</tr>';
+      dom.sensBody.innerHTML = rows.map(rent => {
+        const isCurrentRow = isSame(rent, inp.rentMan);
+        const cells = cols.map(c => {
+          const cf = minCfInSensPeriod({ ...inp, rentMan: rent, [colKey]: c });
+          const cls = [cf >= 0 ? 'sens-pos' : 'sens-neg'];
+          if (isCurrentRow && isSame(c, inp[colKey])) cls.push('sens-current');
+          return `<td class="${cls.join(' ')}">${fmtCfShort(cf)}</td>`;
+        }).join('');
+        return `<tr><td class="${isCurrentRow ? 'sens-current-axis' : ''}">${rent.toFixed(1)}万</td>${cells}</tr>`;
+      }).join('');
+    }
+
+    // 金利上昇シナリオ：民間の金利だけを上げ、据え置きの場合と年ごとに比較する
+    let scMetric = 'cf';
+    let scRates = [];
+    const scChart = new Chart(document.getElementById('scChart').getContext('2d'), {
+      type: 'bar',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { boxWidth: 9, font: { size: 9 } } },
+          tooltip: {
+            callbacks: {
+              label: (c) => `${c.dataset.label}: ${c.parsed.y.toLocaleString()}万円`,
+              footer: (items) => {
+                const r = scRates[items[0].dataIndex];
+                return r ? `民間金利 ${fmtRate(r.base)} → ${fmtRate(r.up)}` : '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { font: { size: 8.5 }, autoSkip: true, maxTicksLimit: 15 } },
+          y: { ticks: { font: { size: 8.5 }, callback: v => v.toLocaleString() + '万' } }
+        }
+      }
+    });
+
+    function renderScenario(inp, investedMan) {
+      const sc = readScenario();
+      dom.scStepInputs.hidden = sc.mode !== 'step';
+      dom.scAnnualInputs.hidden = sc.mode !== 'annual';
+
+      const horizon = Math.max(1, Math.floor(Math.max(inp.bankYrs, inp.eqYrs)));
+      const base = simulateYears(inp, () => inp.bankRate, horizon);
+      const up = simulateYears(inp, scenarioRateForYear(inp.bankRate, sc), horizon);
+      scRates = base.map((b, i) => ({ base: b.rate, up: up[i].rate }));
+
+      const { noiYen } = calcNoi(inp);
+      const summarize = (rows) => {
+        const bankRows = rows.filter(r => r.year <= inp.bankYrs);
+        const firstDeficit = rows.find(r => r.cf < 0);
+        const payback = investedMan > 0
+          ? calcPaybackYears(investedMan * 10000, y => y <= rows.length ? rows[y - 1].cf : noiYen * 12)
+          : 0;
+        return {
+          maxRate: Math.max(...bankRows.map(r => r.rate)),
+          totalRepay: rows.reduce((sum, r) => sum + r.repay, 0),
+          finalCum: rows[rows.length - 1].cumCf,
+          firstDeficit: firstDeficit ? firstDeficit.year : null,
+          deficitYears: rows.filter(r => r.cf < 0).length,
+          payback
+        };
+      };
+      const s0 = summarize(base);
+      const s1 = summarize(up);
+
+      const man = (yen) => Math.round(yen / 10000).toLocaleString() + '万';
+      const manDiff = (yen) => {
+        const v = Math.round(yen / 10000);
+        return v === 0 ? '±0' : (v > 0 ? '+' : '▲') + Math.abs(v).toLocaleString() + '万';
+      };
+      const fmtPayback = (p) => investedMan <= 0 ? 'フルローン'
+        : p === null ? `${DEFAULT_CONFIG.paybackMaxYears}年超` : p.toFixed(1) + '年';
+      const paybackDiff = (investedMan > 0 && s0.payback !== null && s1.payback !== null)
+        ? ((s1.payback - s0.payback >= 0 ? '+' : '') + (s1.payback - s0.payback).toFixed(1) + '年') : '—';
+      const rateDiff = s1.maxRate - s0.maxRate;
+
+      dom.scSummaryHead.innerHTML = '<tr><th>比較項目</th><th>金利据え置き</th><th>金利上昇</th><th>差</th></tr>';
+      const summaryRows = [
+        ['民間金利（最高）', fmtRate(s0.maxRate), fmtRate(s1.maxRate), (rateDiff >= 0 ? '+' : '') + rateDiff.toFixed(3) + '%'],
+        ['総返済額', man(s0.totalRepay), man(s1.totalRepay), manDiff(s1.totalRepay - s0.totalRepay)],
+        [`累積CF（${horizon}年目末）`, man(s0.finalCum), man(s1.finalCum), manDiff(s1.finalCum - s0.finalCum)],
+        ['年間CFが初めて赤字の年', s0.firstDeficit ? `${s0.firstDeficit}年目` : 'なし', s1.firstDeficit ? `${s1.firstDeficit}年目` : 'なし', '—'],
+        ['年間CFが赤字の年数', `${s0.deficitYears}年`, `${s1.deficitYears}年`, `${s1.deficitYears - s0.deficitYears >= 0 ? '+' : ''}${s1.deficitYears - s0.deficitYears}年`],
+        ['回収年数(CCR)', fmtPayback(s0.payback), fmtPayback(s1.payback), paybackDiff]
+      ];
+      dom.scSummaryBody.innerHTML = summaryRows
+        .map(cells => `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`).join('');
+
+      const metrics = {
+        repay:   { key: 'repay',   type: 'bar' },
+        cf:      { key: 'cf',      type: 'bar' },
+        cumCf:   { key: 'cumCf',   type: 'line' },
+        balance: { key: 'balance', type: 'line' }
+      };
+      const m = metrics[scMetric];
+      const toMan = (yen) => Math.round(yen / 1000) / 10;
+      const dataset = (label, rows, color, fill) => ({
+        type: m.type,
+        label,
+        data: rows.map(r => toMan(r[m.key])),
+        backgroundColor: fill,
+        borderColor: color,
+        borderWidth: m.type === 'line' ? 2 : 0,
+        pointRadius: 1.5,
+        tension: 0.15
+      });
+      scChart.data.labels = base.map(r => `${r.year}年目`);
+      scChart.data.datasets = [
+        dataset('金利据え置き', base, '#0284c7', '#38bdf8'),
+        dataset('金利上昇', up, '#ef4444', '#f87171')
+      ];
+      scChart.update('none');
     }
 
     [dom.price, dom.deposit, dom.reno, dom.fundSbi, dom.fundMahalo, dom.fundMariko, dom.equityMisc].forEach(el => {
@@ -1302,6 +1743,28 @@
 
     [dom.rent, dom.opex, dom.bankCap, dom.bankRate, dom.bankYrs, dom.kokoEqRate, dom.kokoEqYrs].forEach(el => {
       el.addEventListener('input', calculate);
+    });
+
+    const setSensMode = (mode) => {
+      sensMode = mode;
+      dom.btnSensRate.classList.toggle('active', mode === 'rate');
+      dom.btnSensYears.classList.toggle('active', mode === 'years');
+      calculate();
+    };
+    dom.btnSensRate.addEventListener('click', () => setSensMode('rate'));
+    dom.btnSensYears.addEventListener('click', () => setSensMode('years'));
+
+    [dom.scStepStart, dom.scStepRise, dom.scAnnualStart, dom.scAnnualRise, dom.scAnnualCap].forEach(el => {
+      el.addEventListener('input', calculate);
+    });
+    [dom.scModeStep, dom.scModeAnnual].forEach(el => el.addEventListener('change', calculate));
+
+    dom.scMetricGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chart-btn');
+      if (!btn) return;
+      scMetric = btn.dataset.metric;
+      dom.scMetricGroup.querySelectorAll('.chart-btn').forEach(b => b.classList.toggle('active', b === btn));
+      calculate();
     });
 
     syncLoanAmounts(true);
