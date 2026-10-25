@@ -13,7 +13,7 @@
     const DEFAULT_CONFIG = {
       // 1. 物件・事業費
       price: {
-        val: 2200,      // 落札取得価格 初期値 (万円)
+        val: 2140,      // 落札取得価格 初期値 (万円)
         min: 1500,      // 下限 (万円)
         max: 3000,      // 上限 (万円)
         step: 10
@@ -119,14 +119,20 @@
         riseStep: 0.05      // 入力刻み (%)
       },
 
-      // 6. 親族からの借入（妻の母）。借入額を 0 にすると「借りない」場合と同じ結果になる
+      // 6. 親族からの借入（妻の母）。チェックを外すと「借りない」場合と同じ結果になる
       familyLoan: {
-        amount: 1000,       // 借入額 (万円)
-        rate: 0,            // 金利 (%)：仮
-        years: 15,          // 返済期間 (年)：仮（信金の最長期間に合わせた）
+        enabled: false,     // 親族から借りる（チェックボックスの初期値）。OFF にすると下の3項目もすべて OFF 扱い
+        maxAmount: 1000,    // 借入額の上限 (万円)：3項目の合計
+        step: 10,           // スライダーの刻み (万円)
+        items: {
+          price: { enabled: true, val: 400 },  // 落札額の上乗せ (万円)
+          reno:  { enabled: true, val: 600 },  // リフォーム資金 (万円)
+          other: { enabled: true, val: 0 }     // その他（手元資金として保有）(万円)
+        },
+        rate: 0,            // 金利 (%)
+        years: 15,          // 返済期間 (年)（信金の最長期間に合わせた）
         maxYears: 30,       // 返済期間の上限 (年)
         method: 'amortize', // 'amortize'：元利均等 / 'bullet'：期限一括（利息のみ毎月）
-        use: 'reserve',     // 'price'：落札額の上乗せ / 'reno'：リフォーム資金 / 'reserve'：予備資金（手元に残す）
         minCf: 0,           // 落札上限を逆算するときの月CFの最低ライン (円)
         minCfStep: 1000,    // 最低ラインの入力刻み (円)
         reverseRents: [15, 17, 20],  // 落札上限を逆算する家賃 (万円)
@@ -332,6 +338,10 @@
 
     .loan-inputs-container { transition: opacity 0.2s; }
     .loan-inputs-container.disabled { opacity: 0.35; pointer-events: none; }
+    .fam-item { margin-bottom: 3px; }
+    .fam-item-toggle { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+    .fam-item-toggle input { width: 12px; height: 12px; cursor: pointer; accent-color: var(--primary); }
+    .fam-item.off .control-val, .fam-item.off input[type="range"] { opacity: 0.35; }
 
     .inline-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 3px; }
     .input-field label { display: block; font-size: 0.62rem; color: var(--text-muted); margin-bottom: 1px; }
@@ -463,15 +473,6 @@
     .scenario-modes input { accent-color: var(--primary); }
     .chart-wrapper.scenario-chart { height: 150px; }
 
-    .tentative-badge {
-      font-size: 0.58rem;
-      font-weight: 700;
-      background: #fffbeb;
-      color: #92400e;
-      border: 1px solid #fde68a;
-      padding: 0 5px;
-      border-radius: 3px;
-    }
     .input-field select { width: 100%; padding: 2px 3px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.70rem; background: #fff; color: var(--text); }
     .inline-inputs.two-col { grid-template-columns: 1fr 1fr; }
     .fam-kpi { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; margin-bottom: 4px; }
@@ -690,38 +691,46 @@
 
         <!-- 親族からの借入 -->
         <div class="sub-section-title">
-          <span>③ 親族からの借入（妻の母）</span>
-          <span class="tentative-badge">金利・期間は仮</span>
+          <input type="checkbox" id="loan-fam-enable">
+          <label for="loan-fam-enable" style="cursor: pointer;">③ 親族からの借入（妻の母）</label>
         </div>
         <div class="loan-inputs-container" id="fam-container">
+          <div class="fam-item" id="fam-item-price">
+            <div class="control-header">
+              <label class="fam-item-toggle"><input type="checkbox" id="fam-price-enable">落札額の上乗せ</label>
+              <span class="control-val" id="disp-fam-price"></span>
+            </div>
+            <input type="range" id="loan-fam-price">
+          </div>
+          <div class="fam-item" id="fam-item-reno">
+            <div class="control-header">
+              <label class="fam-item-toggle"><input type="checkbox" id="fam-reno-enable">リフォーム資金</label>
+              <span class="control-val" id="disp-fam-reno"></span>
+            </div>
+            <input type="range" id="loan-fam-reno">
+          </div>
+          <div class="fam-item" id="fam-item-other">
+            <div class="control-header">
+              <label class="fam-item-toggle"><input type="checkbox" id="fam-other-enable">その他（手元資金）</label>
+              <span class="control-val" id="disp-fam-other"></span>
+            </div>
+            <input type="range" id="loan-fam-other">
+          </div>
+          <div class="range-limits" style="margin-bottom: 4px;"><span>合計 <span id="disp-fam-total"></span></span><span id="limit-fam-max"></span></div>
           <div class="inline-inputs">
             <div class="input-field">
-              <label>借入額 (万)</label>
-              <input type="number" id="loan-fam-amount" step="10" min="0" inputmode="numeric">
-            </div>
-            <div class="input-field">
-              <label>金利 (%・仮)</label>
+              <label>金利 (%)</label>
               <input type="number" id="loan-fam-rate" min="0" inputmode="decimal">
             </div>
             <div class="input-field">
-              <label>期間 (年・仮)</label>
+              <label>期間 (年)</label>
               <input type="number" id="loan-fam-years" step="1" min="1" inputmode="numeric">
             </div>
-          </div>
-          <div class="inline-inputs two-col">
             <div class="input-field">
               <label>返済方式</label>
               <select id="loan-fam-method">
                 <option value="amortize">元利均等</option>
                 <option value="bullet">期限一括（利息のみ毎月）</option>
-              </select>
-            </div>
-            <div class="input-field">
-              <label>使い道</label>
-              <select id="loan-fam-use">
-                <option value="price">落札額の上乗せ</option>
-                <option value="reno">リフォーム資金</option>
-                <option value="reserve">予備資金（手元に残す）</option>
               </select>
             </div>
           </div>
@@ -799,7 +808,7 @@
       </div>
 
       <!-- 親族借入の比較 -->
-      <div class="card analysis-card">
+      <div class="card analysis-card" id="fam-cmp-card">
         <h2>👪 親族借入なし／ありの比較 <span class="method-badge">1年目の月額</span></h2>
         <div class="fam-kpi">
           <div class="kpi-box">
@@ -1003,11 +1012,10 @@
     }
 
     // 親族借入の配分（万円）：落札資金・リフォーム費に充てた額と、手元に残す額
-    function familyAllocation(famAmt, use, price, deposit, reno) {
-      const amt = Math.max(0, famAmt);
-      const toPrice = use === 'price' ? Math.min(amt, Math.max(0, price - deposit)) : 0;
-      const toReno = use === 'reno' ? Math.min(amt, Math.max(0, reno)) : 0;
-      return { toPrice, toReno, toHand: amt - toPrice - toReno };
+    function familyAllocation(parts, price, deposit, reno) {
+      const toPrice = Math.min(parts.price, Math.max(0, price - deposit));
+      const toReno = Math.min(parts.reno, Math.max(0, reno));
+      return { toPrice, toReno, toHand: parts.price + parts.reno + parts.other - toPrice - toReno };
     }
 
     function calcBalanceSchedule(principalMan, annualRatePercent, years, maxYears) {
@@ -1239,11 +1247,22 @@
       kokoEqRate: document.getElementById('loan-koko-eq-rate'),
       kokoEqYrs: document.getElementById('loan-koko-eq-years'),
 
-      famAmt: document.getElementById('loan-fam-amount'),
+      famEnable: document.getElementById('loan-fam-enable'),
+      famContainer: document.getElementById('fam-container'),
+      famCmpCard: document.getElementById('fam-cmp-card'),
+      // 親族借入の3項目（落札額の上乗せ・リフォーム資金・その他）
+      famItems: ['price', 'reno', 'other'].map(key => ({
+        key,
+        box: document.getElementById(`fam-item-${key}`),
+        enable: document.getElementById(`fam-${key}-enable`),
+        range: document.getElementById(`loan-fam-${key}`),
+        disp: document.getElementById(`disp-fam-${key}`)
+      })),
+      dispFamTotal: document.getElementById('disp-fam-total'),
+      limitFamMax: document.getElementById('limit-fam-max'),
       famRate: document.getElementById('loan-fam-rate'),
       famYrs: document.getElementById('loan-fam-years'),
       famMethod: document.getElementById('loan-fam-method'),
-      famUse: document.getElementById('loan-fam-use'),
       famUseNote: document.getElementById('fam-use-note'),
       famKpiBank: document.getElementById('fam-kpi-bank'),
       famKpiEqBox: document.getElementById('fam-kpi-eq-box'),
@@ -1292,10 +1311,19 @@
       scMetricGroup: document.getElementById('sc-metric-group')
     };
 
+    // 親族借入の項目ごとの額（万円）。③ または項目のチェックを外しているときは 0
+    function famItemVal(item) {
+      return dom.famEnable.checked && item.enable.checked ? Math.max(0, parseFloat(item.range.value) || 0) : 0;
+    }
+    function famParts() {
+      return Object.fromEntries(dom.famItems.map(item => [item.key, famItemVal(item)]));
+    }
+
     // 収支計算に使う入力値（感度分析・金利上昇シナリオでは一部を差し替えて再計算する）
     function readInputs() {
       const hasEq = dom.kokoEqEnable.checked;
-      const famAmt = Math.max(0, parseFloat(dom.famAmt.value) || 0);
+      const parts = famParts();
+      const famAmt = parts.price + parts.reno + parts.other;
       const hasFam = famAmt > 0;
       return {
         hasFam,
@@ -1381,13 +1409,18 @@
       [dom.scStepRise, dom.scAnnualRise, dom.scAnnualCap].forEach(el => { el.step = sc.riseStep; });
 
       const fl = cfg.familyLoan;
-      dom.famAmt.value = fl.amount;
+      dom.famEnable.checked = fl.enabled;
+      dom.famItems.forEach(item => {
+        const conf = fl.items[item.key];
+        item.enable.checked = conf.enabled;
+        setupSlider(item.range, { min: 0, max: fl.maxAmount, step: fl.step, val: conf.val });
+      });
+      dom.limitFamMax.textContent = `上限 ${fl.maxAmount.toLocaleString()}万`;
       dom.famRate.value = fl.rate;
       dom.famRate.step = cfg.rateStep;
       dom.famYrs.value = fl.years;
       dom.famYrs.max = fl.maxYears;
       dom.famMethod.value = fl.method;
-      dom.famUse.value = fl.use;
       dom.famMinCf.value = fl.minCf;
       dom.famMinCf.step = fl.minCfStep;
     }
@@ -1486,7 +1519,7 @@
       const price = parseFloat(dom.price.value) || 0;
       const reno = parseFloat(dom.reno.value) || 0;
       const renoSelf = dom.renoSelf.checked;
-      const fam = familyAllocation(parseFloat(dom.famAmt.value) || 0, dom.famUse.value, price, deposit, reno);
+      const fam = familyAllocation(famParts(), price, deposit, reno);
       const total = sbi + mahalo + mariko;
       const invested = deposit + misc + (renoSelf ? reno - fam.toReno : 0);
       return { sbi, mahalo, mariko, misc, deposit, total, invested, fam, left: total - invested + fam.toHand };
@@ -1560,6 +1593,15 @@
       }
 
       dom.kokoEqContainer.classList.toggle('disabled', !hasEq);
+      dom.famContainer.classList.toggle('disabled', !dom.famEnable.checked);
+      dom.famItems.forEach(item => {
+        item.box.classList.toggle('off', !item.enable.checked);
+        item.range.disabled = !item.enable.checked;
+        item.disp.textContent = (parseFloat(item.range.value) || 0).toLocaleString() + ' 万円';
+      });
+      dom.dispFamTotal.textContent = dom.famItems.reduce((sum, item) => sum + (item.enable.checked ? parseFloat(item.range.value) || 0 : 0), 0).toLocaleString() + '万';
+      // 借入額が 0（③ OFF、または3項目とも OFF）のときは比較しても同じ結果なので非表示
+      dom.famCmpCard.hidden = Object.values(famParts()).every(v => v === 0);
 
       // 調達計：実際に投入する自己資金（保証金＋諸経費＋リフォーム自己資金）＋ 借入（親族借入は事業費に充てた分のみ）。手元に残る資金は含めない
       const totalFunding = eq.invested + bankAmt + eqAmt + fam.toPrice + fam.toReno;
@@ -1771,17 +1813,21 @@
 
       // 使い道の説明
       const notes = [];
-      if (famAmt <= 0) {
-        notes.push('借入額 0 ＝ 借りない場合と同じ計算');
-      } else {
+      if (famAmt > 0) {
+        notes.push(`借入額 合計${famAmt.toLocaleString()}万（上限${cfg.maxAmount.toLocaleString()}万）`);
         if (fam.toPrice > 0) notes.push(`落札資金に${fam.toPrice.toLocaleString()}万を充当：信金借入 ＝ 落札額 − 保証金 − ${fam.toPrice.toLocaleString()}万（同じ信金借入額なら落札額を+${fam.toPrice.toLocaleString()}万上乗せできる）`);
         if (fam.toReno > 0) notes.push(renoSelf
           ? `リフォーム費に${fam.toReno.toLocaleString()}万を充当：自己資金の持ち出しが${fam.toReno.toLocaleString()}万減る`
           : `リフォーム費に${fam.toReno.toLocaleString()}万を充当：②公庫の借入を${fam.toReno.toLocaleString()}万減額`);
-        if (fam.toHand > 0) notes.push(`${dom.famUse.value === 'reserve' ? '' : '残りの'}${fam.toHand.toLocaleString()}万は手元資金として保有（CFには返済のみ反映）`);
+        if (fam.toHand > 0) {
+          const parts = famParts();
+          const excess = fam.toHand - parts.other;
+          const detail = [parts.other > 0 ? `その他${parts.other.toLocaleString()}万` : '', excess > 0 ? `落札額・リフォーム費を超える${excess.toLocaleString()}万` : ''].filter(Boolean).join('＋');
+          notes.push(`${detail}は手元資金として保有（CFには返済のみ反映）`);
+        }
         if (inp.famMethod === 'bullet') notes.push(`期限一括：毎月は利息のみ、${famBalloonYear(inp)}年目末に元本${famAmt.toLocaleString()}万を一括返済（月CFには含めず、総返済額・回収年数・金利上昇シナリオには含む）`);
       }
-      if (famAmt > 0) notes.push('借入額を 0 にすると「借りない」場合と同じ計算');
+      if (famAmt > 0) notes.push('③のチェックを外すと「借りない」場合と同じ計算');
       dom.famUseNote.innerHTML = notes.map(n => `・${n}`).join('<br>');
 
       const inpNo = {
@@ -1837,7 +1883,7 @@
 
       // 家賃別の落札上限（逆算）
       const minCf = parseFloat(dom.famMinCf.value) || 0;
-      const toPriceFull = dom.famUse.value === 'price' ? famAmt : 0;
+      const toPriceFull = famParts().price;
       const priceCell = (p) => p === null
         ? '<td class="cf-neg">不可</td>'
         : `<td class="${p >= price ? 'cf-pos' : 'cf-neg'}">${man(p)}</td>`;
@@ -2104,11 +2150,27 @@
     dom.btnSensRate.addEventListener('click', () => setSensMode('rate'));
     dom.btnSensYears.addEventListener('click', () => setSensMode('years'));
 
-    // 親族借入：借入額・使い道は信金・公庫の借入額に影響する
-    [dom.famAmt, dom.famUse].forEach(el => {
-      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
-        syncLoanAmounts(false);
-        calculate();
+    // 親族借入：落札額の上乗せ分・リフォーム資金分は信金・公庫の借入額に影響する
+    const onFamChange = () => {
+      syncLoanAmounts(false);
+      calculate();
+    };
+    // 合計が上限を超えないよう、動かした項目を「上限 − 他の有効な項目の合計」までに抑える
+    const clampFamItem = (item) => {
+      const others = dom.famItems.filter(o => o !== item && o.enable.checked)
+        .reduce((sum, o) => sum + (parseFloat(o.range.value) || 0), 0);
+      const room = Math.max(0, DEFAULT_CONFIG.familyLoan.maxAmount - others);
+      if ((parseFloat(item.range.value) || 0) > room) item.range.value = room;
+    };
+    dom.famEnable.addEventListener('change', onFamChange);
+    dom.famItems.forEach(item => {
+      item.range.addEventListener('input', () => {
+        clampFamItem(item);
+        onFamChange();
+      });
+      item.enable.addEventListener('change', () => {
+        if (item.enable.checked) clampFamItem(item);
+        onFamChange();
       });
     });
     [dom.famRate, dom.famYrs, dom.famMinCf].forEach(el => el.addEventListener('input', calculate));
