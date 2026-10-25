@@ -13,7 +13,7 @@
     const DEFAULT_CONFIG = {
       // 1. 物件・事業費
       price: {
-        val: 2200,      // 落札取得価格 初期値 (万円)
+        val: 2140,      // 落札取得価格 初期値 (万円)
         min: 1500,      // 下限 (万円)
         max: 3000,      // 上限 (万円)
         step: 10
@@ -117,6 +117,26 @@
         annualRise: 0.25,   // 毎年の上昇幅 (%)
         annualCap: 2.0,     // 上昇幅の累計上限 (%)
         riseStep: 0.05      // 入力刻み (%)
+      },
+
+      // 6. 親族からの借入（妻の母）。チェックを外すと「借りない」場合と同じ結果になる
+      familyLoan: {
+        enabled: false,     // 親族から借りる（チェックボックスの初期値）。OFF にすると下の3項目もすべて OFF 扱い
+        maxAmount: 1000,    // 借入額の上限 (万円)：3項目の合計
+        step: 10,           // スライダーの刻み (万円)
+        items: {
+          price: { enabled: true, val: 400 },  // 落札額の上乗せ (万円)
+          reno:  { enabled: true, val: 600 },  // リフォーム資金 (万円)
+          other: { enabled: true, val: 0 }     // その他（手元資金として保有）(万円)
+        },
+        rate: 0,            // 金利 (%)
+        years: 15,          // 返済期間 (年)（信金の最長期間に合わせた）
+        maxYears: 30,       // 返済期間の上限 (年)
+        method: 'amortize', // 'amortize'：元利均等 / 'bullet'：期限一括（利息のみ毎月）
+        minCf: 0,           // 落札上限を逆算するときの月CFの最低ライン (円)
+        minCfStep: 1000,    // 最低ラインの入力刻み (円)
+        reverseRents: [15, 17, 20],  // 落札上限を逆算する家賃 (万円)
+        rateShock: 1.0      // 比較表で確認する信金金利の上昇幅 (%)
       }
     };
   </script>
@@ -163,8 +183,9 @@
       align-items: start; 
       width: 100%;
     }
-    
-    .card { 
+    .grid-layout > div { min-width: 0; }
+
+    .card {
       background: var(--card-bg); 
       border: 1px solid var(--border); 
       border-radius: 5px; 
@@ -317,6 +338,10 @@
 
     .loan-inputs-container { transition: opacity 0.2s; }
     .loan-inputs-container.disabled { opacity: 0.35; pointer-events: none; }
+    .fam-item { margin-bottom: 3px; }
+    .fam-item-toggle { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+    .fam-item-toggle input { width: 12px; height: 12px; cursor: pointer; accent-color: var(--primary); }
+    .fam-item.off .control-val, .fam-item.off input[type="range"] { opacity: 0.35; }
 
     .inline-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 3px; }
     .input-field label { display: block; font-size: 0.62rem; color: var(--text-muted); margin-bottom: 1px; }
@@ -448,6 +473,15 @@
     .scenario-modes input { accent-color: var(--primary); }
     .chart-wrapper.scenario-chart { height: 150px; }
 
+    .input-field select { width: 100%; padding: 2px 3px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.70rem; background: #fff; color: var(--text); }
+    .inline-inputs.two-col { grid-template-columns: 1fr 1fr; }
+    .fam-kpi { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; margin-bottom: 4px; }
+    .fam-table th:first-child, .fam-table td:first-child { white-space: normal; }
+    .fam-table td.cf-pos { color: var(--accent-green); }
+    .fam-table td.cf-neg { color: var(--accent-red); }
+    .fam-min-cf { display: inline-flex; align-items: center; gap: 4px; font-size: 0.62rem; color: var(--text-muted); }
+    .fam-min-cf input { width: 80px; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.74rem; }
+
     @media (max-width: 850px) {
       .grid-layout { grid-template-columns: 1fr; } 
       body { height: auto; padding: 6px 8px; } 
@@ -465,6 +499,8 @@
       .equity-alloc { grid-template-columns: 1fr; }
       .equity-header { flex-wrap: wrap; gap: 3px; }
       input[type="range"] { height: 18px; }
+      .fam-kpi { grid-auto-flow: row; grid-template-columns: 1fr 1fr; }
+      .fam-table th, .fam-table td { white-space: normal; }
     }
   </style>
 </head>
@@ -652,6 +688,54 @@
             </div>
           </div>
         </div>
+
+        <!-- 親族からの借入 -->
+        <div class="sub-section-title">
+          <input type="checkbox" id="loan-fam-enable">
+          <label for="loan-fam-enable" style="cursor: pointer;">③ 親族からの借入（妻の母）</label>
+        </div>
+        <div class="loan-inputs-container" id="fam-container">
+          <div class="fam-item" id="fam-item-price">
+            <div class="control-header">
+              <label class="fam-item-toggle"><input type="checkbox" id="fam-price-enable">落札額の上乗せ</label>
+              <span class="control-val" id="disp-fam-price"></span>
+            </div>
+            <input type="range" id="loan-fam-price">
+          </div>
+          <div class="fam-item" id="fam-item-reno">
+            <div class="control-header">
+              <label class="fam-item-toggle"><input type="checkbox" id="fam-reno-enable">リフォーム資金</label>
+              <span class="control-val" id="disp-fam-reno"></span>
+            </div>
+            <input type="range" id="loan-fam-reno">
+          </div>
+          <div class="fam-item" id="fam-item-other">
+            <div class="control-header">
+              <label class="fam-item-toggle"><input type="checkbox" id="fam-other-enable">その他（手元資金）</label>
+              <span class="control-val" id="disp-fam-other"></span>
+            </div>
+            <input type="range" id="loan-fam-other">
+          </div>
+          <div class="range-limits" style="margin-bottom: 4px;"><span>合計 <span id="disp-fam-total"></span></span><span id="limit-fam-max"></span></div>
+          <div class="inline-inputs">
+            <div class="input-field">
+              <label>金利 (%)</label>
+              <input type="number" id="loan-fam-rate" min="0" inputmode="decimal">
+            </div>
+            <div class="input-field">
+              <label>期間 (年)</label>
+              <input type="number" id="loan-fam-years" step="1" min="1" inputmode="numeric">
+            </div>
+            <div class="input-field">
+              <label>返済方式</label>
+              <select id="loan-fam-method">
+                <option value="amortize">元利均等</option>
+                <option value="bullet">期限一括（利息のみ毎月）</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-note" id="fam-use-note"></div>
+        </div>
       </div>
     </div>
 
@@ -721,6 +805,46 @@
         <div class="chart-wrapper">
           <canvas id="cfChart"></canvas>
         </div>
+      </div>
+
+      <!-- 親族借入の比較 -->
+      <div class="card analysis-card" id="fam-cmp-card">
+        <h2>👪 親族借入なし／ありの比較 <span class="method-badge">1年目の月額</span></h2>
+        <div class="fam-kpi">
+          <div class="kpi-box">
+            <div class="label">① 信金 月返済</div>
+            <div class="value" id="fam-kpi-bank"></div>
+          </div>
+          <div class="kpi-box" id="fam-kpi-eq-box">
+            <div class="label">② 公庫 月返済</div>
+            <div class="value" id="fam-kpi-eq"></div>
+          </div>
+          <div class="kpi-box">
+            <div class="label">③ 親族 月返済</div>
+            <div class="value" id="fam-kpi-fam"></div>
+          </div>
+          <div class="kpi-box" style="background: #e0f2fe;">
+            <div class="label" style="color: #0369a1;">月返済 合計</div>
+            <div class="value" id="fam-kpi-total" style="color: #0284c7;"></div>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="breakdown-table fam-table">
+            <thead id="fam-cmp-head"></thead>
+            <tbody id="fam-cmp-body"></tbody>
+          </table>
+        </div>
+        <div class="chart-header">
+          <span style="font-size: 0.68rem; color: var(--text-muted); font-weight: 600;">🏷️ 家賃別の落札上限（逆算）</span>
+          <label class="fam-min-cf">月CFの最低ライン (円)<input type="number" id="fam-min-cf" inputmode="numeric"></label>
+        </div>
+        <div class="table-container">
+          <table class="breakdown-table fam-table">
+            <thead id="fam-rev-head"></thead>
+            <tbody id="fam-rev-body"></tbody>
+          </table>
+        </div>
+        <div class="card-note" id="fam-rev-note"></div>
       </div>
 
       <!-- 感度分析 -->
@@ -840,6 +964,60 @@
       return rows;
     }
 
+    // calcPmt の逆：月額返済額（円）から借りられる元金（円）を求める
+    function calcPv(pmtYen, annualRatePercent, years) {
+      if (pmtYen <= 0 || !years || years <= 0) return 0;
+      const n = Math.round(years * 12);
+      const rate = parseFloat(annualRatePercent) || 0;
+      if (rate <= 0) return pmtYen * n;
+      const r = (rate / 100) / 12;
+      return pmtYen * (1 - Math.pow(1 + r, -n)) / r;
+    }
+
+    // 期限一括返済：毎月は利息のみ、最終月に元本を一括返済。simulateLoan と同じ形で年ごとに返す
+    function simulateBullet(principalMan, annualRatePercent, years, horizon) {
+      const rows = [];
+      const n = Math.round(years * 12);
+      const principal = Math.max(0, principalMan) * 10000;
+      const rate = parseFloat(annualRatePercent) || 0;
+      const interest = principal * rate / 100 / 12;
+      for (let y = 1; y <= horizon; y++) {
+        let payment = 0;
+        for (let m = (y - 1) * 12 + 1; m <= y * 12; m++) {
+          if (m > n) continue;
+          payment += interest + (m === n ? principal : 0);
+        }
+        rows.push({ rate, payment, balance: y * 12 < n ? principal : 0 });
+      }
+      return rows;
+    }
+
+    // 親族借入の毎月の返済額（円）。期限一括は利息のみ（元本は最終月に一括）
+    function famMonthlyPmt(inp) {
+      if (!inp.hasFam) return 0;
+      if (inp.famMethod === 'bullet') return inp.famAmt * 10000 * (inp.famRate / 100) / 12;
+      return calcPmt(inp.famAmt * 10000, inp.famRate, inp.famYrs);
+    }
+
+    // 期限一括の元本を返す年（年目）。元利均等なら null
+    function famBalloonYear(inp) {
+      return inp.hasFam && inp.famMethod === 'bullet' ? Math.ceil(Math.round(inp.famYrs * 12) / 12) : null;
+    }
+
+    function simulateFamily(inp, horizon) {
+      if (!inp.hasFam) return null;
+      return inp.famMethod === 'bullet'
+        ? simulateBullet(inp.famAmt, inp.famRate, inp.famYrs, horizon)
+        : simulateLoan(inp.famAmt, () => inp.famRate, inp.famYrs, horizon);
+    }
+
+    // 親族借入の配分（万円）：落札資金・リフォーム費に充てた額と、手元に残す額
+    function familyAllocation(parts, price, deposit, reno) {
+      const toPrice = Math.min(parts.price, Math.max(0, price - deposit));
+      const toReno = Math.min(parts.reno, Math.max(0, reno));
+      return { toPrice, toReno, toHand: parts.price + parts.reno + parts.other - toPrice - toReno };
+    }
+
     function calcBalanceSchedule(principalMan, annualRatePercent, years, maxYears) {
       const rows = simulateLoan(principalMan, () => annualRatePercent, years, maxYears);
       return [principalMan, ...rows.map(row => Math.round(row.balance / 10000))];
@@ -857,9 +1035,11 @@
       const { bankYrs, eqYrs, hasEq } = inp;
       const pmtBank = calcPmt(inp.bankAmt * 10000, inp.bankRate, bankYrs);
       const pmtEq   = hasEq ? calcPmt(inp.eqAmt * 10000, inp.eqRate, eqYrs) : 0;
+      const pmtFam  = famMonthlyPmt(inp);
 
       const activeYears = [bankYrs];
       if (hasEq && eqYrs > 0) activeYears.push(eqYrs);
+      if (inp.hasFam && inp.famYrs > 0) activeYears.push(inp.famYrs);
       const breakpoints = Array.from(new Set(activeYears)).sort((a, b) => a - b);
 
       const stages = [];
@@ -867,6 +1047,7 @@
       breakpoints.forEach((yr) => {
         const isBankActive = yr <= bankYrs;
         const isEqActive   = hasEq && (yr <= eqYrs);
+        const isFamActive  = inp.hasFam && (yr <= inp.famYrs);
 
         let periodLabel = '';
         if (breakpoints.length === 1) {
@@ -878,6 +1059,7 @@
         const activeBadges = [];
         if (isBankActive) activeBadges.push('①');
         if (isEqActive)   activeBadges.push('②');
+        if (isFamActive)  activeBadges.push('③');
 
         const badgeHtml = activeBadges.length > 0
           ? `<span class="loan-badge">${activeBadges.join('')}</span>`
@@ -885,7 +1067,8 @@
 
         const stageRepayBank = isBankActive ? pmtBank : 0;
         const stageRepayEq   = isEqActive   ? pmtEq   : 0;
-        const totalRepay     = stageRepayBank + stageRepayEq;
+        const stageRepayFam  = isFamActive  ? pmtFam  : 0;
+        const totalRepay     = stageRepayBank + stageRepayEq + stageRepayFam;
         const cf             = noiYen - totalRepay;
 
         stages.push({
@@ -896,6 +1079,7 @@
           chartLabel: `${periodLabel}${activeBadges.length > 0 ? ' (' + activeBadges.join('') + ')' : ''}`,
           repayBank: stageRepayBank,
           repayEq: stageRepayEq,
+          repayFam: stageRepayFam,
           totalRepay: totalRepay,
           cf: cf
         });
@@ -941,10 +1125,10 @@
       return Math.ceil(maxRepay / (1 - inp.opexRate) / 1000) * 1000;
     }
 
-    // 対象期間を黒字に保てる民間金利の上限（二分法）：民間の返済額 ≤ NOI − 公庫の返済額
+    // 対象期間を黒字に保てる民間金利の上限（二分法）：民間の返済額 ≤ NOI − 公庫・親族の返済額
     function solveMaxBankRate(inp) {
       if (inp.bankAmt <= 0) return { status: 'noLoan' };
-      const room = calcNoi(inp).noiYen - (inp.hasEq ? calcPmt(inp.eqAmt * 10000, inp.eqRate, inp.eqYrs) : 0);
+      const room = calcNoi(inp).noiYen - (inp.hasEq ? calcPmt(inp.eqAmt * 10000, inp.eqRate, inp.eqYrs) : 0) - famMonthlyPmt(inp);
       const pmtAt = (rate) => calcPmt(inp.bankAmt * 10000, rate, inp.bankYrs);
       const upper = DEFAULT_CONFIG.sensitivity.maxSolveRate;
       if (pmtAt(0) > room) return { status: 'none' };
@@ -971,18 +1155,29 @@
       };
     }
 
-    // 年ごとの返済額・CF・累積CF・残債（民間＋公庫）
+    // 年ごとの返済額・CF・累積CF・残債（民間＋公庫＋親族）
     function simulateYears(inp, bankRateForYear, horizon) {
       const { noiYen } = calcNoi(inp);
       const bank = simulateLoan(inp.bankAmt, bankRateForYear, inp.bankYrs, horizon);
       const koko = inp.hasEq ? simulateLoan(inp.eqAmt, () => inp.eqRate, inp.eqYrs, horizon) : null;
+      const fam = simulateFamily(inp, horizon);
       let cumCf = 0;
       return bank.map((b, i) => {
-        const repay = b.payment + (koko ? koko[i].payment : 0);
+        const repay = b.payment + (koko ? koko[i].payment : 0) + (fam ? fam[i].payment : 0);
         const cf = noiYen * 12 - repay;
         cumCf += cf;
-        return { year: i + 1, rate: b.rate, repay, cf, cumCf, balance: b.balance + (koko ? koko[i].balance : 0) };
+        const balance = b.balance + (koko ? koko[i].balance : 0) + (fam ? fam[i].balance : 0);
+        return { year: i + 1, rate: b.rate, repay, cf, cumCf, balance };
       });
+    }
+
+    // 当初（1年目）の月額CFが最低ライン以上になる落札額の上限（万円）。信金借入＝落札額 − 保証金 − 親族の上乗せ分
+    function solveMaxPrice(inp, rentMan, minCfYen, depositMan, toPriceMan) {
+      const x = { ...inp, rentMan };
+      const otherRepay = (x.hasEq ? calcPmt(x.eqAmt * 10000, x.eqRate, x.eqYrs) : 0) + famMonthlyPmt(x);
+      const room = calcNoi(x).noiYen - otherRepay - minCfYen;
+      if (room < 0) return null;
+      return Math.floor(depositMan + toPriceMan + calcPv(room, x.bankRate, x.bankYrs) / 10000);
     }
 
     const dom = {
@@ -1052,6 +1247,35 @@
       kokoEqRate: document.getElementById('loan-koko-eq-rate'),
       kokoEqYrs: document.getElementById('loan-koko-eq-years'),
 
+      famEnable: document.getElementById('loan-fam-enable'),
+      famContainer: document.getElementById('fam-container'),
+      famCmpCard: document.getElementById('fam-cmp-card'),
+      // 親族借入の3項目（落札額の上乗せ・リフォーム資金・その他）
+      famItems: ['price', 'reno', 'other'].map(key => ({
+        key,
+        box: document.getElementById(`fam-item-${key}`),
+        enable: document.getElementById(`fam-${key}-enable`),
+        range: document.getElementById(`loan-fam-${key}`),
+        disp: document.getElementById(`disp-fam-${key}`)
+      })),
+      dispFamTotal: document.getElementById('disp-fam-total'),
+      limitFamMax: document.getElementById('limit-fam-max'),
+      famRate: document.getElementById('loan-fam-rate'),
+      famYrs: document.getElementById('loan-fam-years'),
+      famMethod: document.getElementById('loan-fam-method'),
+      famUseNote: document.getElementById('fam-use-note'),
+      famKpiBank: document.getElementById('fam-kpi-bank'),
+      famKpiEqBox: document.getElementById('fam-kpi-eq-box'),
+      famKpiEq: document.getElementById('fam-kpi-eq'),
+      famKpiFam: document.getElementById('fam-kpi-fam'),
+      famKpiTotal: document.getElementById('fam-kpi-total'),
+      famCmpHead: document.getElementById('fam-cmp-head'),
+      famCmpBody: document.getElementById('fam-cmp-body'),
+      famMinCf: document.getElementById('fam-min-cf'),
+      famRevHead: document.getElementById('fam-rev-head'),
+      famRevBody: document.getElementById('fam-rev-body'),
+      famRevNote: document.getElementById('fam-rev-note'),
+
       kpiTotal: document.getElementById('kpi-total'),
       kpiYield: document.getElementById('kpi-gross-yield'),
       kpiNetYield: document.getElementById('kpi-net-yield'),
@@ -1087,10 +1311,26 @@
       scMetricGroup: document.getElementById('sc-metric-group')
     };
 
+    // 親族借入の項目ごとの額（万円）。③ または項目のチェックを外しているときは 0
+    function famItemVal(item) {
+      return dom.famEnable.checked && item.enable.checked ? Math.max(0, parseFloat(item.range.value) || 0) : 0;
+    }
+    function famParts() {
+      return Object.fromEntries(dom.famItems.map(item => [item.key, famItemVal(item)]));
+    }
+
     // 収支計算に使う入力値（感度分析・金利上昇シナリオでは一部を差し替えて再計算する）
     function readInputs() {
       const hasEq = dom.kokoEqEnable.checked;
+      const parts = famParts();
+      const famAmt = parts.price + parts.reno + parts.other;
+      const hasFam = famAmt > 0;
       return {
+        hasFam,
+        famAmt,
+        famRate: Math.max(0, parseFloat(dom.famRate.value) || 0),
+        famYrs: hasFam ? Math.max(1, parseFloat(dom.famYrs.value) || 1) : 0,
+        famMethod: dom.famMethod.value,
         rentMan: parseFloat(dom.rent.value) || 0,
         opexRate: (parseFloat(dom.opex.value) || 0) / 100,
         bankAmt: Math.max(0, parseFloat(dom.bankAmt.value) || 0),
@@ -1167,6 +1407,22 @@
       dom.scAnnualRise.value = sc.annualRise;
       dom.scAnnualCap.value = sc.annualCap;
       [dom.scStepRise, dom.scAnnualRise, dom.scAnnualCap].forEach(el => { el.step = sc.riseStep; });
+
+      const fl = cfg.familyLoan;
+      dom.famEnable.checked = fl.enabled;
+      dom.famItems.forEach(item => {
+        const conf = fl.items[item.key];
+        item.enable.checked = conf.enabled;
+        setupSlider(item.range, { min: 0, max: fl.maxAmount, step: fl.step, val: conf.val });
+      });
+      dom.limitFamMax.textContent = `上限 ${fl.maxAmount.toLocaleString()}万`;
+      dom.famRate.value = fl.rate;
+      dom.famRate.step = cfg.rateStep;
+      dom.famYrs.value = fl.years;
+      dom.famYrs.max = fl.maxYears;
+      dom.famMethod.value = fl.method;
+      dom.famMinCf.value = fl.minCf;
+      dom.famMinCf.step = fl.minCfStep;
     }
 
     applyConfig();
@@ -1252,18 +1508,21 @@
 
     // 自己資金合計 = 各口座の合計
     // 実際に投入する自己資金 = 保証金（実質頭金）＋ 諸経費 ＋（リフォーム融資なしならリフォーム費用）
-    // 手元に残る資金 = 自己資金合計 − 実際に投入する自己資金
+    // 手元に残る資金 = 自己資金合計 − 実際に投入する自己資金 ＋ 親族借入のうち手元に残す分
+    // 親族借入をリフォーム資金に充てた分は、自己資金で払うリフォーム費用から差し引く
     function getEquity() {
       const sbi = parseFloat(dom.fundSbi.value) || 0;
       const mahalo = parseFloat(dom.fundMahalo.value) || 0;
       const mariko = parseFloat(dom.fundMariko.value) || 0;
       const misc = parseFloat(dom.equityMisc.value) || 0;
       const deposit = parseFloat(dom.deposit.value) || 0;
+      const price = parseFloat(dom.price.value) || 0;
       const reno = parseFloat(dom.reno.value) || 0;
       const renoSelf = dom.renoSelf.checked;
+      const fam = familyAllocation(famParts(), price, deposit, reno);
       const total = sbi + mahalo + mariko;
-      const invested = deposit + misc + (renoSelf ? reno : 0);
-      return { sbi, mahalo, mariko, misc, deposit, total, invested, left: total - invested };
+      const invested = deposit + misc + (renoSelf ? reno - fam.toReno : 0);
+      return { sbi, mahalo, mariko, misc, deposit, total, invested, fam, left: total - invested + fam.toHand };
     }
 
     let isBankAmtManuallyEdited = false;
@@ -1272,7 +1531,7 @@
     function syncLoanAmounts(force = false) {
       const p = parseFloat(dom.price.value) || 0;
       const r = parseFloat(dom.reno.value) || 0;
-      const deposit = getEquity().deposit;
+      const { deposit, fam } = getEquity();
       const hasEq = dom.kokoEqEnable.checked;
 
       // 公庫（設備資金）が無効の間も、借入額の表示はリフォーム費用に合わせておく
@@ -1280,13 +1539,13 @@
         dom.kokoEqAmt.value = Math.round(r);
       }
 
-      // リフォーム費用は公庫で調達（リフォーム融資なしなら自己資金で支払い）
+      // リフォーム費用は公庫で調達（リフォーム融資なしなら自己資金で支払い）。親族借入をリフォームに充てた分は減額
       if (!dom.renoSelf.checked && (!isKokoAmtManuallyEdited || force)) {
-        dom.kokoEqAmt.value = Math.round(r);
+        dom.kokoEqAmt.value = Math.round(r - fam.toReno);
       }
-      // 民間は物件購入資金のみ：落札取得価格 − 保証金（実質頭金）
+      // 民間は物件購入資金のみ：落札取得価格 − 保証金（実質頭金）− 親族借入の上乗せ分
       if (!isBankAmtManuallyEdited || force) {
-        dom.bankAmt.value = Math.max(0, Math.round(p - deposit));
+        dom.bankAmt.value = Math.max(0, Math.round(p - deposit - fam.toPrice));
       }
     }
 
@@ -1322,19 +1581,30 @@
 
       const renoSelf = dom.renoSelf.checked;
 
-      dom.equityLeftFormula.textContent = renoSelf
-        ? '＝ 自己資金合計 − 諸経費 − 保証金 − リフォーム費用'
-        : '＝ 自己資金合計 − 諸経費 − 保証金';
+      const fam = eq.fam;
+      dom.equityLeftFormula.textContent = (renoSelf
+        ? `＝ 自己資金合計 − 諸経費 − 保証金 − リフォーム費用${fam.toReno > 0 ? '（親族充当分を除く）' : ''}`
+        : '＝ 自己資金合計 − 諸経費 − 保証金') + (fam.toHand > 0 ? ' ＋ 親族借入（手元分）' : '');
       // リフォーム融資なし：リフォーム費用も自己資金から支払う
       dom.renoSelfNote.hidden = !renoSelf;
       if (renoSelf) {
-        dom.renoSelfNote.textContent = `内訳：リフォーム費用 ${reno.toLocaleString()}万 ＋ 保証金 ${eq.deposit.toLocaleString()}万`;
+        const renoFamText = fam.toReno > 0 ? ` − 親族充当 ${fam.toReno.toLocaleString()}万` : '';
+        dom.renoSelfNote.textContent = `内訳：リフォーム費用 ${reno.toLocaleString()}万${renoFamText} ＋ 保証金 ${eq.deposit.toLocaleString()}万`;
       }
 
       dom.kokoEqContainer.classList.toggle('disabled', !hasEq);
+      dom.famContainer.classList.toggle('disabled', !dom.famEnable.checked);
+      dom.famItems.forEach(item => {
+        item.box.classList.toggle('off', !item.enable.checked);
+        item.range.disabled = !item.enable.checked;
+        item.disp.textContent = (parseFloat(item.range.value) || 0).toLocaleString() + ' 万円';
+      });
+      dom.dispFamTotal.textContent = dom.famItems.reduce((sum, item) => sum + (item.enable.checked ? parseFloat(item.range.value) || 0 : 0), 0).toLocaleString() + '万';
+      // 借入額が 0（③ OFF、または3項目とも OFF）のときは比較しても同じ結果なので非表示
+      dom.famCmpCard.hidden = Object.values(famParts()).every(v => v === 0);
 
-      // 調達計：実際に投入する自己資金（保証金＋諸経費＋リフォーム自己資金）＋ 借入。手元に残る資金は含めない
-      const totalFunding = eq.invested + bankAmt + eqAmt;
+      // 調達計：実際に投入する自己資金（保証金＋諸経費＋リフォーム自己資金）＋ 借入（親族借入は事業費に充てた分のみ）。手元に残る資金は含めない
+      const totalFunding = eq.invested + bankAmt + eqAmt + fam.toPrice + fam.toReno;
       const fundingDiff = Math.round(totalFunding - totalProject);
 
       dom.balanceIndicator.className = 'balance-indicator';
@@ -1383,7 +1653,7 @@
       dom.kpiRepay.textContent = (initialRepay / 10000).toFixed(1) + ' 万円';
 
       // ローン定数(K%) = 当初の年間返済額 ÷ 借入総額、イールドギャップ = 実質利回り − K%
-      const totalLoanYen = (bankAmt + eqAmt) * 10000;
+      const totalLoanYen = (bankAmt + eqAmt + inp.famAmt) * 10000;
       if (totalLoanYen > 0) {
         const loanConst = (initialRepay * 12) / totalLoanYen * 100;
         const yieldGap = netYield - loanConst;
@@ -1400,9 +1670,12 @@
       if (eq.invested <= 0) {
         dom.kpiPayback.textContent = 'フルローン';
       } else {
+        // 期限一括の元本は、返済する年の年間CFから差し引く
+        const balloonYear = famBalloonYear(inp);
         const paybackYear = calcPaybackYears(eq.invested * 10000, (y) => {
           const stageForYear = stages.find(s => y > s.fromYr && y <= s.toYr);
-          return stageForYear ? (stageForYear.cf * 12) : (noiYen * 12);
+          const balloon = y === balloonYear ? inp.famAmt * 10000 : 0;
+          return (stageForYear ? (stageForYear.cf * 12) : (noiYen * 12)) - balloon;
         });
 
         if (paybackYear !== null) {
@@ -1428,7 +1701,13 @@
       if (hasEq) {
         eqRow = `<tr><td>② 公庫 (${Math.round(eqAmt)}万)</td>${stages.map(s => `<td>${fmtMinus(s.repayEq)}</td>`).join('')}</tr>`;
       }
-      
+
+      let famRow = '';
+      if (inp.hasFam) {
+        const famLabel = `③ 親族 (${Math.round(inp.famAmt)}万${inp.famMethod === 'bullet' ? '・利息のみ' : ''})`;
+        famRow = `<tr><td>${famLabel}</td>${stages.map(s => `<td>${fmtMinus(s.repayFam)}</td>`).join('')}</tr>`;
+      }
+
       let cfRow = `<tr class="total-row"><td>税引前月額CF</td>` +
         stages.map(s => {
           const color = s.cf >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
@@ -1442,7 +1721,7 @@
           return `<td style="color: ${color}">${formatYenWithSign(annualCf)}</td>`;
         }).join('') + `</tr>`;
 
-      dom.tableBody.innerHTML = rentRow + opexRow + bankRow + eqRow + cfRow + annualCfRow;
+      dom.tableBody.innerHTML = rentRow + opexRow + bankRow + eqRow + famRow + cfRow + annualCfRow;
 
       if (currentChartMode === 'cf') {
         cfChart.data.labels = stages.map(s => s.chartLabel);
@@ -1452,7 +1731,7 @@
         ];
       } else {
         const startYear = new Date().getFullYear();
-        const maxLoanYrs = Math.max(bankYrs, eqYrs, 1);
+        const maxLoanYrs = Math.ceil(Math.max(bankYrs, eqYrs, inp.famYrs, 1));
         const debtLabels = [];
         for (let y = 0; y <= maxLoanYrs; y++) {
           debtLabels.push(`${startYear + y}年`);
@@ -1462,8 +1741,11 @@
         const eqDebtSchedule = hasEq 
           ? calcBalanceSchedule(eqAmt, dom.kokoEqRate.value, eqYrs, maxLoanYrs)
           : new Array(maxLoanYrs + 1).fill(0);
+        const famDebtSchedule = inp.hasFam
+          ? [inp.famAmt, ...simulateFamily(inp, maxLoanYrs).map(row => Math.round(row.balance / 10000))]
+          : new Array(maxLoanYrs + 1).fill(0);
 
-        const totalDebtSchedule = bankDebtSchedule.map((b, idx) => b + eqDebtSchedule[idx]);
+        const totalDebtSchedule = bankDebtSchedule.map((b, idx) => b + eqDebtSchedule[idx] + famDebtSchedule[idx]);
 
         const lineDatasets = [
           {
@@ -1478,7 +1760,7 @@
           }
         ];
 
-        if (hasEq) {
+        if (hasEq || inp.hasFam) {
           lineDatasets.push({
             label: '① 民間残債',
             data: bankDebtSchedule,
@@ -1488,11 +1770,24 @@
             borderWidth: 1.2,
             pointRadius: 0
           });
+        }
+        if (hasEq) {
           lineDatasets.push({
             label: '② 公庫残債',
             data: eqDebtSchedule,
             borderColor: '#f59e0b',
             borderDash: [3, 3],
+            tension: 0.15,
+            borderWidth: 1.2,
+            pointRadius: 0
+          });
+        }
+        if (inp.hasFam) {
+          lineDatasets.push({
+            label: '③ 親族残債',
+            data: famDebtSchedule,
+            borderColor: '#10b981',
+            borderDash: [2, 2],
             tension: 0.15,
             borderWidth: 1.2,
             pointRadius: 0
@@ -1504,8 +1799,109 @@
       }
       cfChart.update('none');
 
+      renderFamily(inp, eq, price);
       renderSensitivity(inp);
       renderScenario(inp, eq.invested);
+    }
+
+    // 親族借入：「借入なし」は借入額を 0 にし、充当していた分を信金・公庫・自己資金に戻して比べる
+    function renderFamily(inp, eq, price) {
+      const cfg = DEFAULT_CONFIG.familyLoan;
+      const fam = eq.fam;
+      const renoSelf = dom.renoSelf.checked;
+      const famAmt = inp.famAmt;
+
+      // 使い道の説明
+      const notes = [];
+      if (famAmt > 0) {
+        notes.push(`借入額 合計${famAmt.toLocaleString()}万（上限${cfg.maxAmount.toLocaleString()}万）`);
+        if (fam.toPrice > 0) notes.push(`落札資金に${fam.toPrice.toLocaleString()}万を充当：信金借入 ＝ 落札額 − 保証金 − ${fam.toPrice.toLocaleString()}万（同じ信金借入額なら落札額を+${fam.toPrice.toLocaleString()}万上乗せできる）`);
+        if (fam.toReno > 0) notes.push(renoSelf
+          ? `リフォーム費に${fam.toReno.toLocaleString()}万を充当：自己資金の持ち出しが${fam.toReno.toLocaleString()}万減る`
+          : `リフォーム費に${fam.toReno.toLocaleString()}万を充当：②公庫の借入を${fam.toReno.toLocaleString()}万減額`);
+        if (fam.toHand > 0) {
+          const parts = famParts();
+          const excess = fam.toHand - parts.other;
+          const detail = [parts.other > 0 ? `その他${parts.other.toLocaleString()}万` : '', excess > 0 ? `落札額・リフォーム費を超える${excess.toLocaleString()}万` : ''].filter(Boolean).join('＋');
+          notes.push(`${detail}は手元資金として保有（CFには返済のみ反映）`);
+        }
+        if (inp.famMethod === 'bullet') notes.push(`期限一括：毎月は利息のみ、${famBalloonYear(inp)}年目末に元本${famAmt.toLocaleString()}万を一括返済（月CFには含めず、総返済額・回収年数・金利上昇シナリオには含む）`);
+      }
+      if (famAmt > 0) notes.push('③のチェックを外すと「借りない」場合と同じ計算');
+      dom.famUseNote.innerHTML = notes.map(n => `・${n}`).join('<br>');
+
+      const inpNo = {
+        ...inp,
+        hasFam: false,
+        famAmt: 0,
+        famYrs: 0,
+        bankAmt: inp.bankAmt + fam.toPrice,
+        eqAmt: inp.hasEq ? inp.eqAmt + fam.toReno : 0
+      };
+      const leftNo = eq.left - fam.toHand - (renoSelf ? fam.toReno : 0);
+
+      const summarize = (x, left) => {
+        const first = calcStages(x)[0];
+        const horizon = Math.max(1, Math.ceil(Math.max(x.bankYrs, x.eqYrs, x.famYrs)));
+        const totalRepay = simulateYears(x, () => x.bankRate, horizon).reduce((sum, r) => sum + r.repay, 0);
+        const shockCf = calcStages({ ...x, bankRate: x.bankRate + cfg.rateShock })[0].cf;
+        return { bankAmt: x.bankAmt, first, totalRepay, left, shockCf };
+      };
+      const s0 = summarize(inpNo, leftNo);
+      const s1 = summarize(inp, eq.left);
+
+      const yen = (v) => Math.round(v).toLocaleString() + '円';
+      dom.famKpiBank.textContent = yen(s1.first.repayBank);
+      dom.famKpiEqBox.hidden = !inp.hasEq;
+      dom.famKpiEq.textContent = yen(s1.first.repayEq);
+      dom.famKpiFam.textContent = yen(s1.first.repayFam);
+      dom.famKpiTotal.textContent = yen(s1.first.totalRepay);
+
+      const signed = (v, unit) => {
+        const r = Math.round(v);
+        return (r > 0 ? '+' : r < 0 ? '▲' : '±') + Math.abs(r).toLocaleString() + unit;
+      };
+      const cfCell = (v) => `<td class="${v >= 0 ? 'cf-pos' : 'cf-neg'}">${signed(v, '円')}</td>`;
+      const man = (v) => Math.round(v).toLocaleString() + '万';
+      const plain = (v) => `<td>${v}</td>`;
+      const diff = (a, b, unit) => `<td>${signed(b - a, unit)}</td>`;
+
+      dom.famCmpHead.innerHTML = '<tr><th>比較項目</th><th>借入なし</th><th>借入あり</th><th>差</th></tr>';
+      const rows = [
+        ['① 信金借入額', plain(man(s0.bankAmt)), plain(man(s1.bankAmt)), diff(s0.bankAmt, s1.bankAmt, '万')],
+        ['月返済 合計', plain(yen(s0.first.totalRepay)), plain(yen(s1.first.totalRepay)), diff(s0.first.totalRepay, s1.first.totalRepay, '円')],
+        ['月CF（1年目）', cfCell(s0.first.cf), cfCell(s1.first.cf), diff(s0.first.cf, s1.first.cf, '円')],
+        ['年CF（1年目）', cfCell(s0.first.cf * 12), cfCell(s1.first.cf * 12), diff(s0.first.cf * 12, s1.first.cf * 12, '円')],
+        ['総返済額（完済まで）', plain(man(s0.totalRepay / 10000)), plain(man(s1.totalRepay / 10000)), diff(s0.totalRepay / 10000, s1.totalRepay / 10000, '万')],
+        ['手元資金', plain(man(s0.left)), plain(man(s1.left)), diff(s0.left, s1.left, '万')],
+        [`信金金利+${cfg.rateShock}%時の月CF`, cfCell(s0.shockCf), cfCell(s1.shockCf), diff(s0.shockCf, s1.shockCf, '円')]
+      ];
+      if (famBalloonYear(inp) !== null) {
+        rows.push([`期限一括の返済（${famBalloonYear(inp)}年目末）`, plain('—'), plain(man(famAmt)), plain('—')]);
+      }
+      dom.famCmpBody.innerHTML = rows.map(([label, ...cells]) => `<tr><td>${label}</td>${cells.join('')}</tr>`).join('');
+
+      // 家賃別の落札上限（逆算）
+      const minCf = parseFloat(dom.famMinCf.value) || 0;
+      const toPriceFull = famParts().price;
+      const priceCell = (p) => p === null
+        ? '<td class="cf-neg">不可</td>'
+        : `<td class="${p >= price ? 'cf-pos' : 'cf-neg'}">${man(p)}</td>`;
+      dom.famRevHead.innerHTML = '<tr><th>想定家賃</th><th>借入なし</th><th>借入あり</th><th>差</th></tr>';
+      const revRows = cfg.reverseRents.map(rent => {
+        const p0 = solveMaxPrice(inpNo, rent, minCf, eq.deposit, 0);
+        const p1 = solveMaxPrice(inp, rent, minCf, eq.deposit, toPriceFull);
+        const d = (p0 === null || p1 === null) ? '<td>—</td>' : diff(p0, p1, '万');
+        return `<tr><td>${rent.toFixed(1)}万円</td>${priceCell(p0)}${priceCell(p1)}${d}</tr>`;
+      });
+      const bankCap = parseFloat(dom.bankCap.value);
+      if (bankCap > 0) {
+        const c0 = bankCap + eq.deposit;
+        const c1 = c0 + toPriceFull;
+        revRows.push(`<tr><td>参考：信金上限 ${man(bankCap)} から見た上限</td><td>${man(c0)}</td><td>${man(c1)}</td>${diff(c0, c1, '万')}</tr>`);
+      }
+      dom.famRevBody.innerHTML = revRows.join('');
+      dom.famRevNote.textContent = `※1年目の月CFが ${minCf.toLocaleString()}円 以上になる落札額の上限。信金借入 ＝ 落札額 − 保証金${toPriceFull > 0 ? ' − 親族の上乗せ分' : ''} として逆算し、家賃以外は現在の入力値（運営経費率・金利・期間・リフォーム費など）。緑は現在の落札額（${man(price)}）以上`;
     }
 
     const fmtCfShort = (val) => (val >= 0 ? '+' : '') + Math.round(val).toLocaleString();
@@ -1609,7 +2005,7 @@
       dom.scStepInputs.hidden = sc.mode !== 'step';
       dom.scAnnualInputs.hidden = sc.mode !== 'annual';
 
-      const horizon = Math.max(1, Math.floor(Math.max(inp.bankYrs, inp.eqYrs)));
+      const horizon = Math.max(1, Math.floor(Math.max(inp.bankYrs, inp.eqYrs, inp.famYrs)));
       const base = simulateYears(inp, () => inp.bankRate, horizon);
       const up = simulateYears(inp, scenarioRateForYear(inp.bankRate, sc), horizon);
       scRates = base.map((b, i) => ({ base: b.rate, up: up[i].rate }));
@@ -1753,6 +2149,32 @@
     };
     dom.btnSensRate.addEventListener('click', () => setSensMode('rate'));
     dom.btnSensYears.addEventListener('click', () => setSensMode('years'));
+
+    // 親族借入：落札額の上乗せ分・リフォーム資金分は信金・公庫の借入額に影響する
+    const onFamChange = () => {
+      syncLoanAmounts(false);
+      calculate();
+    };
+    // 合計が上限を超えないよう、動かした項目を「上限 − 他の有効な項目の合計」までに抑える
+    const clampFamItem = (item) => {
+      const others = dom.famItems.filter(o => o !== item && o.enable.checked)
+        .reduce((sum, o) => sum + (parseFloat(o.range.value) || 0), 0);
+      const room = Math.max(0, DEFAULT_CONFIG.familyLoan.maxAmount - others);
+      if ((parseFloat(item.range.value) || 0) > room) item.range.value = room;
+    };
+    dom.famEnable.addEventListener('change', onFamChange);
+    dom.famItems.forEach(item => {
+      item.range.addEventListener('input', () => {
+        clampFamItem(item);
+        onFamChange();
+      });
+      item.enable.addEventListener('change', () => {
+        if (item.enable.checked) clampFamItem(item);
+        onFamChange();
+      });
+    });
+    [dom.famRate, dom.famYrs, dom.famMinCf].forEach(el => el.addEventListener('input', calculate));
+    dom.famMethod.addEventListener('change', calculate);
 
     [dom.scStepStart, dom.scStepRise, dom.scAnnualStart, dom.scAnnualRise, dom.scAnnualCap].forEach(el => {
       el.addEventListener('input', calculate);
