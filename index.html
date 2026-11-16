@@ -11,15 +11,25 @@
   <!-- ========================================== -->
   <script>
     const DEFAULT_CONFIG = {
+      // 0. 競売の基準（3点セットが公開されたら kijun を評価書の売却基準価額に置き換える）
+      auction: {
+        kijun: 1794,        // 売却基準価額 (万円)：3点セット公開前の試算・中心ケース（仮）
+        depositRate: 0.2,   // 買受申出保証金 ＝ 売却基準価額 × 20%
+        minBidRate: 0.8,    // 買受可能価額（入札の下限）＝ 売却基準価額 × 80%
+        depositLinked: true, // 保証金を「売却基準価額 × 20%」に連動させる初期状態
+        minCf: 0,           // 入札上限を逆算するときの月CFの最低ライン (円)
+        minCfStep: 1000     // 最低ラインの入力刻み (円)
+      },
+
       // 1. 物件・事業費
       price: {
         val: 2140,      // 落札取得価格 初期値 (万円)
-        min: 1500,      // 下限 (万円)
+        min: 1500,      // 下限 (万円)：画面では買受可能価額（売却基準価額×80%）に自動で合わせる
         max: 3000,      // 上限 (万円)
-        step: 10
+        step: 1
       },
       deposit: {
-        val: 440,       // 保証金（実質頭金）初期値 (万円)：基準価額の試算・中心ケース2,182万×20%
+        val: 440,       // 保証金（実質頭金）(万円)：連動を外したときの初期値。連動中は 売却基準価額×20% を自動設定
         min: 0,
         max: 800,
         step: 10,
@@ -133,8 +143,7 @@
         years: 15,          // 返済期間 (年)（信金の最長期間に合わせた）
         maxYears: 30,       // 返済期間の上限 (年)
         method: 'amortize', // 'amortize'：元利均等 / 'bullet'：期限一括（利息のみ毎月）
-        minCf: 0,           // 落札上限を逆算するときの月CFの最低ライン (円)
-        minCfStep: 1000,    // 最低ラインの入力刻み (円)
+        // 月CFの最低ラインは auction.minCf（入札上限の欄と共通）
         reverseRents: [15, 17, 20],  // 落札上限を逆算する家賃 (万円)
         rateShock: 1.0      // 比較表で確認する信金金利の上昇幅 (%)
       }
@@ -482,6 +491,17 @@
     .fam-min-cf { display: inline-flex; align-items: center; gap: 4px; font-size: 0.62rem; color: var(--text-muted); }
     .fam-min-cf input { width: 80px; padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.74rem; }
 
+    .auc-inputs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 5px; }
+    .auc-main { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem; font-weight: 700; color: var(--primary); }
+    .auc-main input { width: 110px; padding: 3px 6px; border: 1.5px solid var(--primary); border-radius: 4px; font-size: 0.92rem; font-weight: 700; color: var(--primary); }
+    .method-badge.provisional { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .auc-table td .muted { color: var(--text-muted); font-size: 0.58rem; }
+    .auc-table th, .auc-table td { white-space: normal; }
+    .auc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; font-size: 0.62rem; color: var(--text-muted); }
+    .btn-helper:disabled { opacity: 0.4; cursor: not-allowed; }
+    .formula-alert { font-size: 0.64rem; color: var(--accent-red); font-weight: 700; margin-top: 3px; }
+    input[type="range"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
     @media (max-width: 850px) {
       .grid-layout { grid-template-columns: 1fr; } 
       body { height: auto; padding: 6px 8px; } 
@@ -513,6 +533,52 @@
   <div class="grid-layout">
     <!-- 左カラム：設定系 -->
     <div>
+      <!-- 売却基準価額 → 入札上限・月次CF -->
+      <div class="card">
+        <h2>
+          <span>🏷️ 売却基準価額から入札上限を出す</span>
+          <span class="method-badge" id="auc-badge"></span>
+        </h2>
+        <div class="auc-inputs">
+          <label class="auc-main" for="auc-kijun">売却基準価額 (万円)
+            <input type="number" id="auc-kijun" step="1" min="0" inputmode="decimal">
+          </label>
+          <label class="fam-min-cf">月CFの最低ライン (円)<input type="number" id="auc-min-cf" inputmode="numeric"></label>
+          <label class="zero-toggle"><input type="checkbox" id="auc-deposit-link">保証金を基準価額×20%に連動</label>
+        </div>
+        <div class="fam-kpi">
+          <div class="kpi-box">
+            <div class="label">買受可能価額（下限）</div>
+            <div class="value" id="auc-kpi-min-bid"></div>
+          </div>
+          <div class="kpi-box">
+            <div class="label">保証金（×20%）</div>
+            <div class="value" id="auc-kpi-deposit"></div>
+          </div>
+          <div class="kpi-box" style="background: #e0f2fe;">
+            <div class="label" style="color: #0369a1;" id="auc-kpi-limit-label">入札上限</div>
+            <div class="value" id="auc-kpi-limit" style="color: #0284c7;"></div>
+          </div>
+          <div class="kpi-box">
+            <div class="label">上限時の月CF（1年目）</div>
+            <div class="value" id="auc-kpi-cf"></div>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="breakdown-table fam-table auc-table">
+            <thead id="auc-head"></thead>
+            <tbody id="auc-body"></tbody>
+          </table>
+        </div>
+        <div class="auc-actions">
+          <span>入札上限を落札取得価格に反映：</span>
+          <button type="button" class="btn-helper" id="btn-auc-single">単独担保の上限</button>
+          <button type="button" class="btn-helper" id="btn-auc-joint">共同担保の上限</button>
+        </div>
+        <div class="formula-alert" id="auc-price-warn" hidden></div>
+        <div class="card-note" id="auc-note"></div>
+      </div>
+
       <div class="card">
         <h2>⚙️ 物件・事業費設定</h2>
         
@@ -922,6 +988,7 @@
   </div>
 
   <script>
+    // === CALC-BEGIN ===（ここから CALC-END までは画面に依存しない計算。tests/calc.test.js が読み込んで検算する）
     function calcPmt(principalYen, annualRatePercent, years) {
       if (principalYen <= 0 || !years || years <= 0) return 0;
       const n = Math.round(years * 12);
@@ -955,7 +1022,8 @@
             currentRate = yearRate;
           }
           const interest = balance * r;
-          const principal = Math.min(balance, pmtYen - interest);
+          // 最終回は残高をすべて返す（小数の誤差で残高が残らないようにする）
+          const principal = m === n ? balance : Math.min(balance, pmtYen - interest);
           balance = Math.max(0, balance - principal);
           payment += principal + interest;
         }
@@ -1089,19 +1157,23 @@
       return stages;
     }
 
-    // 年間CFを積み上げ、投入した自己資金を回収できる年数（端数あり）を返す。回収できなければ null
+    // 年間CFを積み上げ、投入した自己資金を回収できる年数（端数あり）を返す。回収できなければ null。
+    // いったん回収しても、その後の赤字や期限一括の返済で累計が再び下回る場合は、最後に上回った時点を回収年数とする
     function calcPaybackYears(investedYen, annualCfForYear) {
       let cumulativeCf = 0;
+      let result = null;
       for (let y = 1; y <= DEFAULT_CONFIG.paybackMaxYears; y++) {
         const annualCf = annualCfForYear(y);
         const prevCumulative = cumulativeCf;
         cumulativeCf += annualCf;
         if (prevCumulative < investedYen && cumulativeCf >= investedYen) {
           const fraction = annualCf > 1 ? Math.max(0, Math.min(1, (investedYen - prevCumulative) / annualCf)) : 0;
-          return (y - 1) + fraction;
+          result = (y - 1) + fraction;
+        } else if (cumulativeCf < investedYen) {
+          result = null;
         }
       }
-      return null;
+      return result;
     }
 
     // 感度分析の対象期間：公庫の返済中（公庫なしなら民間の返済中）
@@ -1135,7 +1207,8 @@
       if (pmtAt(upper) <= room) return { status: 'above', rate: upper };
       let lo = 0;
       let hi = upper;
-      while (hi - lo > 0.0001) {
+      // 表示は0.001%単位なので、それより十分に細かく追い込んでから切り捨てる
+      while (hi - lo > 1e-7) {
         const mid = (lo + hi) / 2;
         if (pmtAt(mid) <= room) lo = mid; else hi = mid;
       }
@@ -1180,7 +1253,49 @@
       return Math.floor(depositMan + toPriceMan + calcPv(room, x.bankRate, x.bankYrs) / 10000);
     }
 
+    // 競売：売却基準価額（万円）から、買受申出保証金と買受可能価額（入札の下限）を求める（0.1万円単位）
+    function auctionTerms(kijunMan, depositRate, minBidRate) {
+      const k = Math.max(0, kijunMan || 0);
+      const r1 = (v) => Math.round(v * 10) / 10;
+      return { deposit: r1(k * depositRate), minBid: r1(k * minBidRate) };
+    }
+
+    // 指定した落札額のときの入力値：信金借入 ＝ 落札額 − 保証金 − 親族の上乗せ分（0.1万円単位）
+    function inputsAtPrice(inp, priceMan, depositMan, toPriceMan) {
+      return { ...inp, bankAmt: Math.max(0, Math.round((priceMan - depositMan - toPriceMan) * 10) / 10) };
+    }
+
+    // 入札上限（万円）＝「融資枠からの上限（信金の借入上限＋保証金＋親族の上乗せ分）」と
+    // 「CFからの上限（1年目の月CFが最低ライン以上）」の小さい方。買受可能価額を下回るなら入札できない
+    function solveBidLimit(inp, o) {
+      const byCap = o.bankCapMan > 0 ? Math.floor(o.depositMan + o.toPriceMan + o.bankCapMan) : null;
+      const byCf = solveMaxPrice(inp, inp.rentMan, o.minCfYen, o.depositMan, o.toPriceMan);
+      let limit = byCf;
+      let binding = 'cf';
+      if (byCf !== null && byCap !== null && byCap < byCf) {
+        limit = byCap;
+        binding = 'cap';
+      }
+      return { byCap, byCf, limit, binding, feasible: limit !== null && limit >= o.minBidMan };
+    }
+    // === CALC-END ===
+
     const dom = {
+      aucKijun: document.getElementById('auc-kijun'),
+      aucBadge: document.getElementById('auc-badge'),
+      aucDepositLink: document.getElementById('auc-deposit-link'),
+      aucMinCf: document.getElementById('auc-min-cf'),
+      aucKpiMinBid: document.getElementById('auc-kpi-min-bid'),
+      aucKpiDeposit: document.getElementById('auc-kpi-deposit'),
+      aucKpiLimit: document.getElementById('auc-kpi-limit'),
+      aucKpiLimitLabel: document.getElementById('auc-kpi-limit-label'),
+      aucKpiCf: document.getElementById('auc-kpi-cf'),
+      aucHead: document.getElementById('auc-head'),
+      aucBody: document.getElementById('auc-body'),
+      aucNote: document.getElementById('auc-note'),
+      aucPriceWarn: document.getElementById('auc-price-warn'),
+      btnAucSingle: document.getElementById('btn-auc-single'),
+      btnAucJoint: document.getElementById('btn-auc-joint'),
       price: document.getElementById('param-price'),
       deposit: document.getElementById('param-deposit'),
       dispDeposit: document.getElementById('disp-deposit'),
@@ -1329,17 +1444,17 @@
         hasFam,
         famAmt,
         famRate: Math.max(0, parseFloat(dom.famRate.value) || 0),
-        famYrs: hasFam ? Math.max(1, parseFloat(dom.famYrs.value) || 1) : 0,
+        famYrs: hasFam ? Math.max(1, Math.round(parseFloat(dom.famYrs.value)) || 1) : 0,
         famMethod: dom.famMethod.value,
         rentMan: parseFloat(dom.rent.value) || 0,
         opexRate: (parseFloat(dom.opex.value) || 0) / 100,
         bankAmt: Math.max(0, parseFloat(dom.bankAmt.value) || 0),
         bankRate: parseFloat(dom.bankRate.value) || 0,
-        bankYrs: Math.max(1, parseFloat(dom.bankYrs.value) || 1),
+        bankYrs: Math.max(1, Math.round(parseFloat(dom.bankYrs.value)) || 1),
         hasEq,
         eqAmt: hasEq ? Math.max(0, parseFloat(dom.kokoEqAmt.value) || 0) : 0,
         eqRate: parseFloat(dom.kokoEqRate.value) || 0,
-        eqYrs: hasEq ? Math.max(1, parseFloat(dom.kokoEqYrs.value) || 1) : 0
+        eqYrs: hasEq ? Math.max(1, Math.round(parseFloat(dom.kokoEqYrs.value)) || 1) : 0
       };
     }
 
@@ -1421,11 +1536,53 @@
       dom.famYrs.value = fl.years;
       dom.famYrs.max = fl.maxYears;
       dom.famMethod.value = fl.method;
-      dom.famMinCf.value = fl.minCf;
-      dom.famMinCf.step = fl.minCfStep;
+      const auc = cfg.auction;
+      dom.aucKijun.value = auc.kijun;
+      dom.aucDepositLink.checked = auc.depositLinked;
+      [dom.aucMinCf, dom.famMinCf].forEach(el => {
+        el.value = auc.minCf;
+        el.step = auc.minCfStep;
+      });
+    }
+
+    // 売却基準価額から、買受可能価額と保証金を求める
+    function readAuction() {
+      const cfg = DEFAULT_CONFIG.auction;
+      const kijun = Math.max(0, parseFloat(dom.aucKijun.value) || 0);
+      return { kijun, ...auctionTerms(kijun, cfg.depositRate, cfg.minBidRate) };
+    }
+
+    // 売却基準価額を変えたとき：保証金（連動中のみ）と、落札取得価格の下限（買受可能価額）を合わせる
+    function applyAuction() {
+      const cfg = DEFAULT_CONFIG;
+      const auc = readAuction();
+      const linked = dom.aucDepositLink.checked && auc.kijun > 0;
+      dom.deposit.disabled = linked;
+      if (linked) {
+        dom.deposit.step = 0.1;
+        dom.deposit.max = Math.max(cfg.deposit.max, Math.ceil(auc.deposit));
+        dom.deposit.value = auc.deposit;
+      } else {
+        dom.deposit.step = cfg.deposit.step;
+        dom.deposit.max = cfg.deposit.max;
+      }
+      dom.limitDepositMax.textContent = `${Number(dom.deposit.max).toLocaleString()}万`;
+      // 入札は買受可能価額以上（万円単位に切り上げ）
+      const priceMin = auc.kijun > 0 ? Math.ceil(auc.minBid) : cfg.price.min;
+      setPriceRange(priceMin, Math.max(cfg.price.max, priceMin));
+    }
+
+    function setPriceRange(min, max) {
+      const current = parseFloat(dom.price.value) || 0;
+      dom.price.min = min;
+      dom.price.max = max;
+      dom.price.value = Math.min(max, Math.max(min, current));
+      dom.limitPriceMin.textContent = `${min.toLocaleString()}万`;
+      dom.limitPriceMax.textContent = `${max.toLocaleString()}万`;
     }
 
     applyConfig();
+    applyAuction();
 
     let currentChartMode = 'cf';
     const ctx = document.getElementById('cfChart').getContext('2d');
@@ -1541,11 +1698,11 @@
 
       // リフォーム費用は公庫で調達（リフォーム融資なしなら自己資金で支払い）。親族借入をリフォームに充てた分は減額
       if (!dom.renoSelf.checked && (!isKokoAmtManuallyEdited || force)) {
-        dom.kokoEqAmt.value = Math.round(r - fam.toReno);
+        dom.kokoEqAmt.value = Math.max(0, Math.round((r - fam.toReno) * 10) / 10);
       }
       // 民間は物件購入資金のみ：落札取得価格 − 保証金（実質頭金）− 親族借入の上乗せ分
       if (!isBankAmtManuallyEdited || force) {
-        dom.bankAmt.value = Math.max(0, Math.round(p - deposit - fam.toPrice));
+        dom.bankAmt.value = Math.max(0, Math.round((p - deposit - fam.toPrice) * 10) / 10);
       }
     }
 
@@ -1695,7 +1852,7 @@
 
       let rentRow = `<tr><td>想定月額賃料</td>${stages.map(() => `<td>${fmtYen(rentYen)}</td>`).join('')}</tr>`;
       let opexRow = `<tr><td>運営経費 (${Math.round(opexRate * 100)}%)</td>${stages.map(() => `<td>${fmtMinus(opexYen)}</td>`).join('')}</tr>`;
-      let bankRow = `<tr><td>① 民間 (${Math.round(bankAmt)}万)</td>${stages.map(s => `<td>${fmtMinus(s.repayBank)}</td>`).join('')}</tr>`;
+      let bankRow = `<tr><td>① 民間 (${bankAmt.toLocaleString()}万)</td>${stages.map(s => `<td>${fmtMinus(s.repayBank)}</td>`).join('')}</tr>`;
       
       let eqRow = '';
       if (hasEq) {
@@ -1799,9 +1956,78 @@
       }
       cfChart.update('none');
 
+      renderAuction(inp, eq, price);
       renderFamily(inp, eq, price);
       renderSensitivity(inp);
       renderScenario(inp, eq.invested);
+    }
+
+    // 入札上限：売却基準価額 → 保証金・買受可能価額 → 単独担保／共同担保それぞれの入札上限と、そのときの月次CF
+    let aucLimits = { single: null, joint: null };
+    function renderAuction(inp, eq, price) {
+      const cfg = DEFAULT_CONFIG;
+      const auc = readAuction();
+      const isDefault = auc.kijun === cfg.auction.kijun;
+      dom.aucBadge.textContent = isDefault ? '仮の値（3点セット公開後に置き換え）' : '入力値で計算中';
+      dom.aucBadge.classList.toggle('provisional', isDefault);
+
+      const man = (v) => v.toLocaleString() + '万';
+      const yen = (v) => Math.round(v).toLocaleString() + '円';
+      const signedYen = (v) => (v >= 0 ? '+' : '▲') + Math.abs(Math.round(v)).toLocaleString() + '円';
+      const minCf = parseFloat(dom.aucMinCf.value) || 0;
+      const toPrice = famParts().price;
+      const isJoint = dom.bankJoint.checked;
+      // 現在選んでいる担保条件の列は、画面の「借入上限」の値を使う（手で書き換えた値を反映）
+      const capInput = parseFloat(dom.bankCap.value);
+      const capOf = (joint) => joint === isJoint && capInput > 0 ? capInput : (joint ? cfg.bank.capJoint : cfg.bank.cap);
+
+      const cols = [false, true].map(joint => {
+        const cap = capOf(joint);
+        const r = solveBidLimit(inp, { depositMan: eq.deposit, toPriceMan: toPrice, bankCapMan: cap, minCfYen: minCf, minBidMan: auc.minBid });
+        const at = r.limit === null ? null : inputsAtPrice(inp, r.limit, eq.deposit, toPrice);
+        return { joint, cap, r, at, stages: at ? calcStages(at) : null };
+      });
+      aucLimits = { single: cols[0].r, joint: cols[1].r };
+
+      dom.aucKpiMinBid.textContent = man(auc.minBid);
+      dom.aucKpiDeposit.textContent = man(eq.deposit);
+      const cur = cols[isJoint ? 1 : 0];
+      dom.aucKpiLimitLabel.textContent = `入札上限（${isJoint ? '共同担保' : '単独担保'}）`;
+      dom.aucKpiLimit.textContent = cur.r.limit === null ? '不可' : man(cur.r.limit);
+      dom.aucKpiLimit.style.color = cur.r.feasible ? '' : 'var(--accent-red)';
+      dom.aucKpiCf.textContent = cur.stages ? signedYen(cur.stages[0].cf) : '—';
+      dom.aucKpiCf.style.color = cur.stages && cur.stages[0].cf >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+
+      const td = (html, cls = '') => `<td class="${cls}">${html}</td>`;
+      const limitCell = (c) => c.r.limit === null ? td('不可', 'cf-neg')
+        : td(`<b>${man(c.r.limit)}</b>（${c.r.binding === 'cap' ? '融資枠' : 'CF'}で決まる）`, c.r.feasible ? 'cf-pos' : 'cf-neg');
+      const judgeCell = (c) => {
+        if (c.r.limit === null) return td('不可：借入なしでも月CFが最低ラインに届かない', 'cf-neg');
+        const gap = Math.round((c.r.limit - auc.minBid) * 10) / 10;
+        return gap >= 0 ? td(`入札可（買受可能価額 +${man(gap)}）`, 'cf-pos') : td(`不可：買受可能価額を ▲${man(Math.abs(gap))} 下回る`, 'cf-neg');
+      };
+      const cfCell = (v) => td(signedYen(v), v >= 0 ? 'cf-pos' : 'cf-neg');
+      const stageLabels = (cols.find(c => c.stages) || { stages: [] }).stages.map(s => s.label);
+      const rows = [
+        [`融資枠からの上限<br><span class="muted">信金上限＋保証金${toPrice > 0 ? '＋親族の上乗せ' : ''}</span>`, ...cols.map(c => td(c.r.byCap === null ? '—' : man(c.r.byCap)))],
+        [`CFからの上限<br><span class="muted">月CF ${minCf.toLocaleString()}円以上</span>`, ...cols.map(c => td(c.r.byCf === null ? '不可' : man(c.r.byCf)))],
+        ['入札上限（小さい方）', ...cols.map(limitCell)],
+        ['判定', ...cols.map(judgeCell)],
+        ['上限で落札したときの信金借入', ...cols.map(c => td(c.at ? man(c.at.bankAmt) : '—'))],
+        ['月返済 合計（1年目）', ...cols.map(c => td(c.stages ? yen(c.stages[0].totalRepay) : '—'))],
+        ...stageLabels.map((label, i) => [`月次CF（${label}）`, ...cols.map(c => c.stages ? cfCell(c.stages[i].cf) : td('—'))])
+      ];
+      dom.aucHead.innerHTML = '<tr><th>項目</th>' + cols.map(c =>
+        `<th class="${c.joint === isJoint ? 'sens-current-axis' : ''}">${c.joint ? '共同担保' : '単独担保'}（信金上限 ${man(c.cap)}）</th>`).join('') + '</tr>';
+      dom.aucBody.innerHTML = rows.map(([label, ...cells]) => `<tr><td>${label}</td>${cells.join('')}</tr>`).join('');
+
+      dom.btnAucSingle.disabled = !cols[0].r.feasible;
+      dom.btnAucJoint.disabled = !cols[1].r.feasible;
+      dom.aucPriceWarn.hidden = !(auc.kijun > 0 && price < auc.minBid);
+      dom.aucPriceWarn.textContent = `⚠️ 落札取得価格 ${man(price)} は買受可能価額 ${man(auc.minBid)} を下回るため入札できません`;
+      dom.aucNote.textContent = `※買受可能価額 ＝ 売却基準価額 × ${cfg.auction.minBidRate * 100}%、保証金 ＝ 売却基準価額 × ${cfg.auction.depositRate * 100}%。` +
+        `信金借入 ＝ 入札額 − 保証金${toPrice > 0 ? ' − 親族の上乗せ分' : ''}（保証金を超える自己資金の追加は見込まない）。` +
+        `家賃 ${inp.rentMan.toFixed(1)}万・運営経費率・金利・期間・公庫・親族借入は下の入力値を使用。実際の保証金額は公告の記載を確認`;
     }
 
     // 親族借入：「借入なし」は借入額を 0 にし、充当していた分を信金・公庫・自己資金に戻して比べる
@@ -2173,7 +2399,39 @@
         onFamChange();
       });
     });
-    [dom.famRate, dom.famYrs, dom.famMinCf].forEach(el => el.addEventListener('input', calculate));
+    [dom.famRate, dom.famYrs].forEach(el => el.addEventListener('input', calculate));
+
+    // 月CFの最低ラインは、入札上限の欄と親族借入の比較の欄で共通
+    [dom.aucMinCf, dom.famMinCf].forEach(el => el.addEventListener('input', () => {
+      [dom.aucMinCf, dom.famMinCf].forEach(o => { if (o !== el) o.value = el.value; });
+      calculate();
+    }));
+
+    // 売却基準価額・保証金の連動を変えたら、保証金と落札取得価格の下限を合わせて再計算
+    const onAuctionChange = () => {
+      applyAuction();
+      syncLoanAmounts(false);
+      calculate();
+    };
+    dom.aucKijun.addEventListener('input', onAuctionChange);
+    dom.aucDepositLink.addEventListener('change', onAuctionChange);
+
+    // 入札上限を落札取得価格に反映（担保条件も合わせて切り替える）
+    const applyBidLimit = (joint) => {
+      const r = joint ? aucLimits.joint : aucLimits.single;
+      if (!r || !r.feasible) return;
+      if (dom.bankJoint.checked !== joint) {
+        dom.bankJoint.checked = joint;
+        dom.bankCap.value = joint ? DEFAULT_CONFIG.bank.capJoint : DEFAULT_CONFIG.bank.cap;
+      }
+      setPriceRange(parseFloat(dom.price.min), Math.max(parseFloat(dom.price.max), r.limit));
+      dom.price.value = r.limit;
+      isBankAmtManuallyEdited = false;
+      syncLoanAmounts(true);
+      calculate();
+    };
+    dom.btnAucSingle.addEventListener('click', () => applyBidLimit(false));
+    dom.btnAucJoint.addEventListener('click', () => applyBidLimit(true));
     dom.famMethod.addEventListener('change', calculate);
 
     [dom.scStepStart, dom.scStepRise, dom.scAnnualStart, dom.scAnnualRise, dom.scAnnualCap].forEach(el => {
@@ -2191,6 +2449,14 @@
 
     syncLoanAmounts(true);
     calculate();
+
+    // セルフテスト：index.html?selftest を開くと tests/calc.test.js を読み込み、検算結果を画面の先頭に表示する
+    if (new URLSearchParams(location.search).has('selftest')) {
+      const script = document.createElement('script');
+      script.src = 'tests/calc.test.js';
+      script.onerror = () => alert('tests/calc.test.js を読み込めませんでした');
+      document.body.appendChild(script);
+    }
   </script>
 </body>
 </html>
